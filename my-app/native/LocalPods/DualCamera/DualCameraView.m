@@ -252,7 +252,7 @@
     AVCaptureVideoPreviewLayer *fl = [AVCaptureVideoPreviewLayer layerWithSession:front];
     fl.videoGravity = AVLayerVideoGravityResizeAspectFill;
     fl.frame = self.frontPreviewView.bounds;
-    fl.transform = CGAffineTransformMakeScale(-1, 1);
+    fl.transform = CATransform3DMakeScale(-1, 1, 1);
     [self.frontPreviewView.layer addSublayer:fl];
     self.frontPreviewLayer = fl;
 
