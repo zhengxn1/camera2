@@ -8,8 +8,7 @@ RCT_EXPORT_MODULE()
 + (BOOL)requiresMainQueueSetup { return NO; }
 
 RCT_EXPORT_METHOD(getCameraAuthorizationStatus:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
+                  reject:(RCTPromiseRejectBlock)reject) {
   AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
   switch (status) {
     case AVAuthorizationStatusAuthorized:     resolve(@"authorized");     break;
@@ -21,16 +20,14 @@ RCT_EXPORT_METHOD(getCameraAuthorizationStatus:(RCTPromiseResolveBlock)resolve
 }
 
 RCT_EXPORT_METHOD(requestCameraPermission:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
+                  reject:(RCTPromiseRejectBlock)reject) {
   [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {
     resolve(@(granted));
   }];
 }
 
 RCT_EXPORT_METHOD(requestAudioPermission:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-{
+                  reject:(RCTPromiseRejectBlock)reject) {
   [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
     resolve(@(granted));
   }];
