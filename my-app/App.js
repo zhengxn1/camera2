@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AsyncStorage,
   Image,
   NativeEventEmitter,
   NativeModules,
@@ -65,6 +66,7 @@ export default function App() {
   const [frontZoom, setFrontZoom] = useState(1.0);
   const [backZoom, setBackZoom] = useState(1.0);
   const [showAdjustment, setShowAdjustment] = useState(false);
+  const [saveAspectRatio, setSaveAspectRatio] = useState('9:16');
 
   // 检查相机权限
   useEffect(() => {
@@ -89,6 +91,18 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
+  }, []);
+
+  // Load saved aspect ratio on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const saved = await AsyncStorage.getItem('dualcam_save_aspect');
+        if (saved && ['9:16', '3:4', '1:1'].includes(saved)) {
+          setSaveAspectRatio(saved);
+        }
+      } catch (_) {}
+    })();
   }, []);
 
   const ensureMediaPermission = useCallback(async () => {
@@ -264,6 +278,7 @@ export default function App() {
         <NativeDualCameraView
           style={styles.nativeCamera}
           layoutMode={LAYOUT_MAP[cameraMode]}
+          saveAspectRatio={saveAspectRatio}
           dualLayoutRatio={cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX ? dualLayoutRatio : 0.5}
           pipSize={cameraMode === CAMERA_MODE.PIP_SQUARE || cameraMode === CAMERA_MODE.PIP_CIRCLE ? pipSize : 0.28}
           pipPositionX={pipPosition.x}
@@ -360,6 +375,24 @@ export default function App() {
               <Text style={styles.adjustBtnText}>居中</Text>
             </Pressable>
           </View>
+        </View>
+      ) : null}
+
+      {/* 保存比例选择器 - 双摄模式下显示 */}
+      {(cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX || cameraMode === CAMERA_MODE.PIP_SQUARE || cameraMode === CAMERA_MODE.PIP_CIRCLE) && !recording && !saving ? (
+        <View style={styles.aspectPickerContainer} pointerEvents="box-none">
+          {['9:16', '3:4', '1:1'].map(r => (
+            <Pressable
+              key={r}
+              style={[styles.aspectBtn, saveAspectRatio === r && styles.aspectBtnActive]}
+              onPress={async () => {
+                setSaveAspectRatio(r);
+                try { await AsyncStorage.setItem('dualcam_save_aspect', r); } catch (_) {}
+              }}
+            >
+              <Text style={[styles.aspectBtnText, saveAspectRatio === r && styles.aspectBtnTextActive]}>{r}</Text>
+            </Pressable>
+          ))}
         </View>
       ) : null}
 
@@ -577,4 +610,21 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
   },
   adjustToggleText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+
+  aspectPickerContainer: {
+    position: 'absolute', left: 12, bottom: 110,
+    flexDirection: 'row', gap: 6,
+  },
+  aspectBtn: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)',
+  },
+  aspectBtnActive: {
+    backgroundColor: 'rgba(77,166,255,0.7)',
+    borderColor: '#4da6ff',
+  },
+  aspectBtnText: { color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '600' },
+  aspectBtnTextActive: { color: '#fff' },
 });

@@ -13,4 +13,8 @@ RCT_CUSTOM_VIEW_PROPERTY(layoutMode, NSString, DualCameraView) {
   view.layoutMode = json ? [RCTConvert NSString:json] : @"back";
 }
 
+RCT_CUSTOM_VIEW_PROPERTY(saveAspectRatio, NSString, DualCameraView) {
+  view.saveAspectRatio = json ? [RCTConvert NSString:json] : @"9:16";
+}
+
 @end

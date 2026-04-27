@@ -22,6 +22,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat frontZoomFactor; // front camera zoom
 @property (nonatomic, assign) CGFloat backZoomFactor;  // back camera zoom
 
+// Save aspect ratio for dual-cam photo output: @"9:16" | @"3:4" | @"1:1"
+@property (nonatomic, copy) NSString *saveAspectRatio;
+
 - (void)dc_startSession;
 - (void)dc_stopSession;
 - (void)dc_takePhoto;

@@ -5,7 +5,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 
-@interface DualCameraView () <AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate>
+@interface DualCameraView () <AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate>
 
 @property (nonatomic, strong) AVCaptureMultiCamSession *multiCamSession;
 @property (nonatomic, strong) AVCaptureSession *singleSession;
@@ -31,6 +31,13 @@
 @property (nonatomic, assign) BOOL isRunning;
 @property (nonatomic, copy) NSString *currentLayout;
 
+// VideoDataOutput for WYSIWYG photo capture
+@property (nonatomic, strong) AVCaptureVideoDataOutput *frontVideoDataOutput;
+@property (nonatomic, strong) AVCaptureVideoDataOutput *backVideoDataOutput;
+@property (nonatomic, strong) dispatch_queue_t videoDataOutputQueue;
+@property (nonatomic, strong) CIImage *latestFrontFrame;
+@property (nonatomic, strong) CIImage *latestBackFrame;
+
 // Dual compositing state
 @property (nonatomic, strong) NSMutableDictionary *pendingDualPhotos;
 @property (nonatomic, assign) BOOL pendingDualPhotosFront;
@@ -39,8 +46,8 @@
 @property (nonatomic, strong) NSString *frontRecordingPath;
 @property (nonatomic, assign) BOOL backRecordingFinished;
 @property (nonatomic, assign) BOOL frontRecordingFinished;
-@property (nonatomic, assign) BOOL isDualRecordingActive; // prevents layout change during dual recording
-@property (nonatomic, strong) AVAssetExportSession *videoExportSession; // keep alive until export completes
+@property (nonatomic, assign) BOOL isDualRecordingActive;
+@property (nonatomic, strong) AVAssetExportSession *videoExportSession;
 @property (nonatomic, strong) dispatch_queue_t compositingQueue;
 
 // canvasSizeAtRecording — only declared here (not in .h), used internally
@@ -80,12 +87,15 @@
   _usingMultiCam = NO;
   _pendingDualPhotos = [NSMutableDictionary dictionary];
   _compositingQueue = dispatch_queue_create("com.zhengning.dualcamera.compositing", DISPATCH_QUEUE_SERIAL);
+  _videoDataOutputQueue = dispatch_queue_create("com.zhengning.dualcamera.videodata", DISPATCH_QUEUE_SERIAL);
   // Default values for layout/PiP/zoom properties (declared in .h for React Native)
   _dualLayoutRatio = 0.5;
   _pipSize = 0.28;
   _pipPositionX = 0.85;
   _pipPositionY = 0.80;
   _frontZoomFactor = 1.0;
+  _backZoomFactor = 1.0;
+  _saveAspectRatio = @"9:16";
   _backZoomFactor = 1.0;
   _canvasSizeAtRecording = CGSizeZero;
   [self createPlaceholderViews];
@@ -450,6 +460,32 @@
   if (ok && self.audioInput) {
     [self addAudioConnectionToMovieOutput:self.audioInput output:backMovieOutput session:self.multiCamSession];
     [self addAudioConnectionToMovieOutput:self.audioInput output:self.frontMovieOutput session:self.multiCamSession];
+  }
+
+  // VideoDataOutput for WYSIWYG photo capture (front camera)
+  if (ok) {
+    self.frontVideoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
+    self.frontVideoDataOutput.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
+    [self.frontVideoDataOutput setSampleBufferDelegate:self queue:self.videoDataOutputQueue];
+    if ([self.multiCamSession canAddOutput:self.frontVideoDataOutput]) {
+      [self.multiCamSession addOutput:self.frontVideoDataOutput];
+      AVCaptureConnection *conn = [self.frontVideoDataOutput connectionWithMediaType:AVMediaTypeVideo];
+      if (conn.isVideoMirroringSupported) conn.videoMirrored = YES;
+    } else {
+      NSLog(@"[DualCamera] Cannot add frontVideoDataOutput to session");
+    }
+  }
+
+  // VideoDataOutput for WYSIWYG photo capture (back camera)
+  if (ok) {
+    self.backVideoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
+    self.backVideoDataOutput.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
+    [self.backVideoDataOutput setSampleBufferDelegate:self queue:self.videoDataOutputQueue];
+    if ([self.multiCamSession canAddOutput:self.backVideoDataOutput]) {
+      [self.multiCamSession addOutput:self.backVideoDataOutput];
+    } else {
+      NSLog(@"[DualCamera] Cannot add backVideoDataOutput to session");
+    }
   }
 
   [self.multiCamSession commitConfiguration];
@@ -1237,16 +1273,42 @@
     if (!self.isConfigured) return;
 
     if (self.usingMultiCam && [self isDualLayout:self.currentLayout]) {
-      // Dual-cam: reset state, capture front then back sequentially via photo output
-      self.pendingDualPhotosBack = NO;
-      self.pendingDualPhotosFront = NO;
-      [self.pendingDualPhotos removeAllObjects];
-      [self captureFrontPhotoForDual];
+      // WYSIWYG: grab latest frames from VideoDataOutput and composite
+      CIImage *frontFrame;
+      CIImage *backFrame;
+      @synchronized(self) {
+        frontFrame = self.latestFrontFrame;
+        backFrame = self.latestBackFrame;
+      }
+
+      if (!frontFrame || !backFrame) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self emitError:@"Camera not ready, please try again"];
+        });
+        return;
+      }
+
+      // Calculate save canvas from aspect ratio
+      CGSize saveCanvas = [self canvasSizeForSaveAspectRatio:self.saveAspectRatio];
+
+      dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        CIImage *composited = [self compositeFront:frontFrame back:backFrame toCanvas:saveCanvas];
+        NSString *path = [self saveCIImageAsJPEG:composited];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          if (path) {
+            [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
+          } else {
+            [self emitError:@"Failed to save photo"];
+          }
+        });
+      });
     } else {
       // Single-cam: use photo output for full-resolution
       AVCapturePhotoOutput *output = [self photoOutputForCurrentLayout];
       if (!output) {
-        [self emitError:@"Photo output not available"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+          [self emitError:@"Photo output not available"];
+        });
         return;
       }
       AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
@@ -1256,35 +1318,136 @@
   });
 }
 
-- (void)captureFrontPhotoForDual {
-  AVCapturePhotoOutput *frontOutput = self.frontPhotoOutput;
-  if (!frontOutput) {
-    [self emitError:@"Front photo output not available"];
-    return;
+#pragma mark - WYSIWYG Capture Helpers
+
+- (CGSize)canvasSizeForSaveAspectRatio:(NSString *)aspectRatio {
+  // Use current view width as reference; calculate height from aspect ratio
+  CGFloat refW = self.bounds.size.width > 0 ? self.bounds.size.width : 390.0;
+  if ([aspectRatio isEqualToString:@"9:16"]) {
+    return CGSizeMake(refW, refW * 16.0 / 9.0);
+  } else if ([aspectRatio isEqualToString:@"3:4"]) {
+    return CGSizeMake(refW, refW * 4.0 / 3.0);
+  } else if ([aspectRatio isEqualToString:@"1:1"]) {
+    return CGSizeMake(refW, refW);
   }
-  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
-  settings.flashMode = AVCaptureFlashModeOff;
-  [frontOutput capturePhotoWithSettings:settings delegate:self];
+  // Default: 9:16
+  return CGSizeMake(refW, refW * 16.0 / 9.0);
 }
 
-- (void)captureBackPhotoForDual {
-  AVCapturePhotoOutput *backOutput = self.backPhotoOutput;
-  if (!backOutput) {
-    [self emitError:@"Back photo output not available"];
-    return;
+- (CIImage *)compositeFront:(CIImage *)front back:(CIImage *)back toCanvas:(CGSize)canvasSize {
+  CGFloat canvasW = canvasSize.width;
+  CGFloat canvasH = canvasSize.height;
+  CGFloat ratio = self.dualLayoutRatio > 0 ? self.dualLayoutRatio : 0.5;
+
+  if ([self.currentLayout isEqualToString:@"lr"]) {
+    // LR: left=back, right=front (portrait)
+    CGFloat leftW  = canvasW * ratio;
+    CGFloat rightW = canvasW * (1 - ratio);
+    return [self compositeLRFront:front back:back canvasW:canvasW canvasH:canvasH leftW:leftW rightW:rightW];
+  } else if ([self.currentLayout isEqualToString:@"sx"]) {
+    // SX: top=front, bottom=back
+    CGFloat topH    = canvasH * (1 - ratio);
+    CGFloat bottomH = canvasH * ratio;
+    return [self compositeSXFront:front back:back canvasW:canvasW canvasH:canvasH topH:topH bottomH:bottomH];
+  } else if ([self.currentLayout isEqualToString:@"pip_square"] || [self.currentLayout isEqualToString:@"pip_circle"]) {
+    // PiP: back as full background, front as overlay
+    CGFloat s = canvasW * self.pipSize;
+    CGFloat cx = canvasW * self.pipPositionX;
+    CGFloat cy = canvasH * self.pipPositionY;
+    cx = MAX(s / 2, MIN(canvasW - s / 2, cx));
+    cy = MAX(s / 2, MIN(canvasH - s / 2, cy));
+    CGRect pipRect = CGRectMake(cx - s / 2, cy - s / 2, s, s);
+    return [self compositePIPFront:front back:back canvasW:canvasW canvasH:canvasH pipRect:pipRect];
   }
-  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
-  settings.flashMode = AVCaptureFlashModeOff;
-  [backOutput capturePhotoWithSettings:settings delegate:self];
+
+  // Default: return back camera
+  return [self scaledCIImage:back toSize:canvasSize];
 }
 
-- (UIImage *)captureCanvasSnapshot {
-  UIGraphicsBeginImageContextWithOptions(self.bounds.size, YES, [UIScreen mainScreen].scale);
-  CGContextRef ctx = UIGraphicsGetCurrentContext();
-  [self.layer renderInContext:ctx];
-  UIImage *img = UIGraphicsGetImageFromCurrentImageContext();
-  UIGraphicsEndImageContext();
-  return img;
+- (CIImage *)compositeLRFront:(CIImage *)front back:(CIImage *)back
+                      canvasW:(CGFloat)canvasW canvasH:(CGFloat)canvasH
+                        leftW:(CGFloat)leftW rightW:(CGFloat)rightW {
+  // Back (left): fill by height, crop horizontally centered
+  CGFloat backOrigW = back.extent.size.width;
+  CGFloat backOrigH = back.extent.size.height;
+  CGFloat backScale = canvasH / backOrigH;
+  CIImage *backScaled = [self scaledCIImage:back toSize:CGSizeMake(backOrigW * backScale, backOrigH * backScale)];
+  CGFloat backScaledW = backOrigW * backScale;
+  CGFloat backCropX = MAX(0, (backScaledW - leftW) / 2);
+  CIImage *backLeft = [backScaled imageByCroppingToRect:CGRectMake(backCropX, 0, leftW, canvasH)];
+
+  // Front (right): fill by height, crop, mirror, translate
+  CGFloat frontOrigW = front.extent.size.width;
+  CGFloat frontOrigH = front.extent.size.height;
+  CGFloat frontScale = canvasH / frontOrigH;
+  CIImage *frontScaled = [self scaledCIImage:front toSize:CGSizeMake(frontOrigW * frontScale, frontOrigH * frontScale)];
+  CGFloat frontScaledW = frontOrigW * frontScale;
+  CGFloat frontCropX = MAX(0, (frontScaledW - rightW) / 2);
+  CIImage *frontRightRaw = [frontScaled imageByCroppingToRect:CGRectMake(frontCropX, 0, rightW, canvasH)];
+  CGFloat cx = rightW;
+  CGAffineTransform mirror = CGAffineTransformConcat(
+    CGAffineTransformMakeTranslation(cx, 0),
+    CGAffineTransformMakeScale(-1, 1));
+  CIImage *frontMirrored = [frontRightRaw imageByApplyingTransform:mirror];
+  CIImage *frontRight = [frontMirrored imageByApplyingTransform:CGAffineTransformMakeTranslation(leftW, 0)];
+
+  return [backLeft imageByCompositingOverImage:frontRight];
+}
+
+- (CIImage *)compositeSXFront:(CIImage *)front back:(CIImage *)back
+                      canvasW:(CGFloat)canvasW canvasH:(CGFloat)canvasH
+                        topH:(CGFloat)topH bottomH:(CGFloat)bottomH {
+  // Front (top): fill by width, crop from top, mirror, no vertical translate
+  CGFloat frontOrigW = front.extent.size.width;
+  CGFloat frontOrigH = front.extent.size.height;
+  CGFloat frontScale = canvasW / frontOrigW;
+  CIImage *frontScaled = [self scaledCIImage:front toSize:CGSizeMake(canvasW, frontOrigH * frontScale)];
+  CIImage *frontTopRaw = [frontScaled imageByCroppingToRect:CGRectMake(0, 0, canvasW, topH)];
+  CGFloat cx = canvasW;
+  CGAffineTransform mirror = CGAffineTransformConcat(
+    CGAffineTransformMakeTranslation(cx, 0),
+    CGAffineTransformMakeScale(-1, 1));
+  CIImage *frontMirrored = [frontTopRaw imageByApplyingTransform:mirror];
+
+  // Back (bottom): fill by width, crop from top, translate down by topH
+  CGFloat backOrigW = back.extent.size.width;
+  CGFloat backOrigH = back.extent.size.height;
+  CGFloat backScale = canvasW / backOrigW;
+  CIImage *backScaled = [self scaledCIImage:back toSize:CGSizeMake(canvasW, backOrigH * backScale)];
+  CIImage *backBottomRaw = [backScaled imageByCroppingToRect:CGRectMake(0, 0, canvasW, bottomH)];
+  CIImage *backBottom = [backBottomRaw imageByApplyingTransform:CGAffineTransformMakeTranslation(0, topH)];
+
+  return [frontMirrored imageByCompositingOverImage:backBottom];
+}
+
+- (CIImage *)compositePIPFront:(CIImage *)front back:(CIImage *)back
+                       canvasW:(CGFloat)canvasW canvasH:(CGFloat)canvasH
+                       pipRect:(CGRect)pipRect {
+  // Back: fill canvas (scale to cover, crop excess)
+  CGFloat backOrigW = back.extent.size.width;
+  CGFloat backOrigH = back.extent.size.height;
+  CGFloat backScale = MAX(canvasW / backOrigW, canvasH / backOrigH);
+  CIImage *backScaled = [self scaledCIImage:back toSize:CGSizeMake(backOrigW * backScale, backOrigH * backScale)];
+  CGFloat backCropX = MAX(0, (backScaled.extent.size.width - canvasW) / 2);
+  CGFloat backCropY = MAX(0, (backScaled.extent.size.height - canvasH) / 2);
+  CIImage *backFull = [backScaled imageByCroppingToRect:CGRectMake(backCropX, backCropY, canvasW, canvasH)];
+
+  // Front: fit into pip rect, mirror, translate
+  CGFloat frontOrigW = front.extent.size.width;
+  CGFloat frontOrigH = front.extent.size.height;
+  CGFloat frontScale = MIN(pipRect.size.width / frontOrigW, pipRect.size.height / frontOrigH);
+  CIImage *frontScaled = [self scaledCIImage:front toSize:CGSizeMake(frontOrigW * frontScale, frontOrigH * frontScale)];
+  CGFloat frontCropX = MAX(0, (frontScaled.extent.size.width - pipRect.size.width) / 2);
+  CGFloat frontCropY = MAX(0, (frontScaled.extent.size.height - pipRect.size.height) / 2);
+  CIImage *frontCropped = [frontScaled imageByCroppingToRect:CGRectMake(frontCropX, frontCropY, pipRect.size.width, pipRect.size.height)];
+  CGFloat cx = pipRect.size.width;
+  CGAffineTransform mirror = CGAffineTransformConcat(
+    CGAffineTransformMakeTranslation(cx, 0),
+    CGAffineTransformMakeScale(-1, 1));
+  CIImage *frontMirrored = [frontCropped imageByApplyingTransform:mirror];
+  CIImage *pipPlaced = [frontMirrored imageByApplyingTransform:CGAffineTransformMakeTranslation(pipRect.origin.x, pipRect.origin.y)];
+
+  return [pipPlaced imageByCompositingOverImage:backFull];
 }
 
 - (NSString *)saveImageAsJPEG:(UIImage *)image {
@@ -1593,6 +1756,34 @@
 
   // Single-cam mode: emit directly
   [self emitRecordingFinished:fileURL.absoluteString];
+}
+
+#pragma mark - AVCaptureVideoDataOutputSampleBufferDelegate
+
+- (void)captureOutput:(AVCaptureOutput *)output
+    didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
+           fromConnection:(AVCaptureConnection *)connection {
+  CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
+  if (!pixelBuffer) return;
+
+  CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+  if (!ciImage) return;
+
+  // Front camera: mirror to match preview
+  if (output == self.frontVideoDataOutput) {
+    CGFloat w = ciImage.extent.size.width;
+    CGAffineTransform mirror = CGAffineTransformConcat(
+      CGAffineTransformMakeTranslation(w, 0),
+      CGAffineTransformMakeScale(-1, 1));
+    ciImage = [ciImage imageByApplyingTransform:mirror];
+    @synchronized(self) {
+      self.latestFrontFrame = ciImage;
+    }
+  } else {
+    @synchronized(self) {
+      self.latestBackFrame = ciImage;
+    }
+  }
 }
 
 - (void)dealloc {
