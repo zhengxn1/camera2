@@ -28,4 +28,12 @@ RCT_EXPORT_METHOD(requestCameraPermission:(RCTPromiseResolveBlock)resolve
   }];
 }
 
+RCT_EXPORT_METHOD(requestAudioPermission:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject)
+{
+  [AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio completionHandler:^(BOOL granted) {
+    resolve(@(granted));
+  }];
+}
+
 @end

@@ -21,7 +21,7 @@ RCT_EXPORT_MODULE()
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-  return @[@"onPhotoSaved", @"onPhotoError", @"onRecordingFinished", @"onRecordingError", @"onSessionError"];
+  return @[@"onPhotoSaved", @"onPhotoError", @"onRecordingFinished", @"onRecordingError", @"onSessionError", @"onAudioLevel"];
 }
 
 - (void)startObserving { _hasListeners = YES; }
@@ -47,6 +47,10 @@ RCT_EXPORT_MODULE()
 
 - (void)sendSessionError:(NSString *)error code:(NSString *)code {
   [self sendEventIfNeeded:@"onSessionError" body:@{@"error": error ?: @"Camera session error", @"code": code ?: @"session_error"}];
+}
+
+- (void)sendAudioLevel:(float)average peak:(float)peak {
+  [self sendEventIfNeeded:@"onAudioLevel" body:@{@"average": @(average), @"peak": @(peak)}];
 }
 
 - (void)sendEventIfNeeded:(NSString *)name body:(NSDictionary *)body {

@@ -21,7 +21,7 @@
         "NSCameraUsageDescription": "需要访问相机以进行全屏预览与拍照。",
         "NSMicrophoneUsageDescription": "需要访问麦克风以录制视频声音。"
       },
-      "buildNumber": "2"
+      "buildNumber": "12"
     },
     "android": {
       "adaptiveIcon": {
