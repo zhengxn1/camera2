@@ -898,29 +898,40 @@
 - (CIImage *)compositeSXForPhotos:(CIImage *)front back:(CIImage *)back
                          canvasW:(CGFloat)canvasW canvasH:(CGFloat)canvasH
                            halfW:(CGFloat)halfW halfH:(CGFloat)halfH {
-  // Front camera: fill top half, mirror horizontally
+  // SX: front on top half, back on bottom half
+  // Strategy: each half fills its area edge-to-edge, no gaps
+  //
+  //   y=0 ┌─────────────────────┐
+  //       │  front (top half)   │ topH = halfH
+  //       │  scale→crop by W    │
+  //   y=halfH └─────────────────────┘ ←拼接线
+  //       │  back  (bottom half)│
+  //       │  scale→crop by W    │
+  //   y=canvasH└─────────────────────┘
+
+  // Front (top): scale by halfH → crop from top → no offset (starts at y=0)
   CGFloat frontOrigW = front.extent.size.width;
   CGFloat frontOrigH = front.extent.size.height;
-  CGFloat frontScale = halfW / frontOrigW;
-  CIImage *frontScaled = [self scaledCIImage:front toSize:CGSizeMake(frontOrigW * frontScale, frontOrigH * frontScale)];
-  CGFloat frontScaledH = frontOrigH * frontScale;
-  CGFloat frontCropY = MAX(0, (frontScaledH - halfH) / 2);
-  CIImage *frontTopRaw = [frontScaled imageByCroppingToRect:CGRectMake(0, frontCropY, halfW, halfH)];
-  // Mirror horizontally
+  CGFloat frontScale = halfH / frontOrigH;                  // scale by HALF HEIGHT
+  CIImage *frontScaled = [self scaledCIImage:front
+                                     toSize:CGSizeMake(frontOrigW * frontScale, frontOrigH * frontScale)];
+  // frontCropW = halfW; frontCropH = halfH; both cropped from top-left of scaled image
+  CIImage *frontTop = [frontScaled imageByCroppingToRect:CGRectMake(0, 0, halfW, halfH)];
+  // Mirror horizontally (matches preview display)
   CGFloat cx = halfW;
   CGAffineTransform mirror = CGAffineTransformConcat(
     CGAffineTransformMakeTranslation(cx, 0),
     CGAffineTransformMakeScale(-1, 1));
-  CIImage *frontMirrored = [frontTopRaw imageByApplyingTransform:mirror];
+  CIImage *frontMirrored = [frontTop imageByApplyingTransform:mirror];
 
-  // Back camera: fill bottom half (no mirror)
+  // Back (bottom): scale by halfH → crop from top → offset by halfH
   CGFloat backOrigW = back.extent.size.width;
   CGFloat backOrigH = back.extent.size.height;
-  CGFloat backScale = halfW / backOrigW;
-  CIImage *backScaled = [self scaledCIImage:back toSize:CGSizeMake(backOrigW * backScale, backOrigH * backScale)];
-  CGFloat backScaledH = backOrigH * backScale;
-  CGFloat backCropY = MAX(0, (backScaledH - halfH) / 2);
-  CIImage *backBottom = [backScaled imageByCroppingToRect:CGRectMake(0, backCropY, halfW, halfH)];
+  CGFloat backScale = halfH / backOrigH;                     // scale by HALF HEIGHT
+  CIImage *backScaled = [self scaledCIImage:back
+                                    toSize:CGSizeMake(backOrigW * backScale, backOrigH * backScale)];
+  // backCropW = halfW; backCropH = halfH; cropped from top-left → translate down by halfH
+  CIImage *backBottom = [backScaled imageByCroppingToRect:CGRectMake(0, 0, halfW, halfH)];
   CIImage *backBottomOffset = [backBottom imageByApplyingTransform:CGAffineTransformMakeTranslation(0, halfH)];
 
   CIImage *composited = [frontMirrored imageByCompositingOverImage:backBottomOffset];
