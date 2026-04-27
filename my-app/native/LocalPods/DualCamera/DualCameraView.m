@@ -1226,18 +1226,11 @@
     if (!self.isConfigured) return;
 
     if (self.usingMultiCam && [self isDualLayout:self.currentLayout]) {
-      // Dual-cam: use canvas snapshot for WYSIWYG (what you see = what you get)
-      // The preview layers already handle orientation/mirroring/scaling correctly,
-      // so rendering the view gives us the exact saved image
-      dispatch_async(dispatch_get_main_queue(), ^{
-        UIImage *snapshot = [self captureCanvasSnapshot];
-        NSString *path = [self saveImageAsJPEG:snapshot];
-        if (path) {
-          [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
-        } else {
-          [self emitError:@"Failed to capture canvas snapshot"];
-        }
-      });
+      // Dual-cam: reset state, capture front then back sequentially via photo output
+      self.pendingDualPhotosBack = NO;
+      self.pendingDualPhotosFront = NO;
+      [self.pendingDualPhotos removeAllObjects];
+      [self captureFrontPhotoForDual];
     } else {
       // Single-cam: use photo output for full-resolution
       AVCapturePhotoOutput *output = [self photoOutputForCurrentLayout];
@@ -1250,6 +1243,28 @@
       [output capturePhotoWithSettings:settings delegate:self];
     }
   });
+}
+
+- (void)captureFrontPhotoForDual {
+  AVCapturePhotoOutput *frontOutput = self.frontPhotoOutput;
+  if (!frontOutput) {
+    [self emitError:@"Front photo output not available"];
+    return;
+  }
+  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
+  settings.flashMode = AVCaptureFlashModeOff;
+  [frontOutput capturePhotoWithSettings:settings delegate:self];
+}
+
+- (void)captureBackPhotoForDual {
+  AVCapturePhotoOutput *backOutput = self.backPhotoOutput;
+  if (!backOutput) {
+    [self emitError:@"Back photo output not available"];
+    return;
+  }
+  AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
+  settings.flashMode = AVCaptureFlashModeOff;
+  [backOutput capturePhotoWithSettings:settings delegate:self];
 }
 
 - (UIImage *)captureCanvasSnapshot {
@@ -1455,8 +1470,11 @@
     return;
   }
 
+  // Determine dual mode BEFORE resetting any state
+  BOOL isDual = (self.usingMultiCam && [self isDualLayout:self.currentLayout]);
+
   // Dual-cam photo compositing
-  if (self.usingMultiCam && [self isDualLayout:self.currentLayout]) {
+  if (isDual) {
     CIImage *ciImage = [CIImage imageWithData:data];
     if (!ciImage) {
       [self emitError:@"Failed to create CIImage"];
@@ -1467,6 +1485,12 @@
     self.pendingDualPhotos[key] = ciImage;
     if (output == self.backPhotoOutput) self.pendingDualPhotosBack = YES;
     if (output == self.frontPhotoOutput) self.pendingDualPhotosFront = YES;
+
+    // Front photo captured: trigger back photo capture
+    if (output == self.frontPhotoOutput) {
+      [self captureBackPhotoForDual];
+      return;
+    }
 
     // Both images received
     if (self.pendingDualPhotosBack && self.pendingDualPhotosFront) {
