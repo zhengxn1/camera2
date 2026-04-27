@@ -303,17 +303,15 @@
   }
 
   AVCaptureMultiCamSession *session = [[AVCaptureMultiCamSession alloc] init];
-  __block AVCaptureVideoPreviewLayer *backLayer = nil;
-  __block AVCaptureVideoPreviewLayer *frontLayer = nil;
   dispatch_sync(dispatch_get_main_queue(), ^{
     [self removePreviewLayers];
 
-    backLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:session];
+    AVCaptureVideoPreviewLayer *backLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:session];
     backLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
     backLayer.frame = self.backPreviewView.bounds;
     [self.backPreviewView.layer addSublayer:backLayer];
 
-    frontLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:session];
+    AVCaptureVideoPreviewLayer *frontLayer = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:session];
     frontLayer.videoGravity = AVLayerVideoGravityResizeAspectFill;
     frontLayer.frame = self.frontPreviewView.bounds;
     [self.frontPreviewView.layer addSublayer:frontLayer];
@@ -1203,14 +1201,14 @@
   self.videoExportSession.videoComposition = videoComp;
 
   dispatch_semaphore_t sema = dispatch_semaphore_create(0);
-  __block NSString *resultPath = nil;
+  NSMutableString *resultPath = [NSMutableString stringWithString:@""];
 
   [self.videoExportSession exportAsynchronouslyWithCompletionHandler:^{
     if (self.videoExportSession.status == AVAssetExportSessionStatusCompleted) {
-      resultPath = outPath;
+      [resultPath setString:outPath];
     } else {
       NSLog(@"[DualCamera] Video export failed: %@", self.videoExportSession.error);
-      resultPath = backPath; // fallback to back video only
+      [resultPath setString:backPath]; // fallback to back video only
     }
     self.videoExportSession = nil;
     dispatch_semaphore_signal(sema);
