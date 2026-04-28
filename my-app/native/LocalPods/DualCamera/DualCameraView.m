@@ -470,7 +470,11 @@
     if ([self.multiCamSession canAddOutput:self.frontVideoDataOutput]) {
       [self.multiCamSession addOutput:self.frontVideoDataOutput];
       AVCaptureConnection *conn = [self.frontVideoDataOutput connectionWithMediaType:AVMediaTypeVideo];
-      if (conn.isVideoMirroringSupported) conn.videoMirrored = YES;
+      if (conn.isVideoOrientationSupported) conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+      if (conn.isVideoMirroringSupported) {
+        conn.automaticallyAdjustsVideoMirroring = NO;
+        conn.videoMirrored = YES;
+      }
     } else {
       NSLog(@"[DualCamera] Cannot add frontVideoDataOutput to session");
     }
@@ -483,6 +487,8 @@
     [self.backVideoDataOutput setSampleBufferDelegate:self queue:self.videoDataOutputQueue];
     if ([self.multiCamSession canAddOutput:self.backVideoDataOutput]) {
       [self.multiCamSession addOutput:self.backVideoDataOutput];
+      AVCaptureConnection *conn = [self.backVideoDataOutput connectionWithMediaType:AVMediaTypeVideo];
+      if (conn.isVideoOrientationSupported) conn.videoOrientation = AVCaptureVideoOrientationPortrait;
     } else {
       NSLog(@"[DualCamera] Cannot add backVideoDataOutput to session");
     }
@@ -1321,17 +1327,17 @@
 #pragma mark - WYSIWYG Capture Helpers
 
 - (CGSize)canvasSizeForSaveAspectRatio:(NSString *)aspectRatio {
-  // Use current view width as reference; calculate height from aspect ratio
-  CGFloat refW = self.bounds.size.width > 0 ? self.bounds.size.width : 390.0;
+  // Use a fixed reference width to ensure consistent output regardless of device orientation.
+  // The canvas height is derived from the selected aspect ratio.
+  CGFloat refW = 390.0;  // fixed reference width (portrait iPhone width in points)
   if ([aspectRatio isEqualToString:@"9:16"]) {
-    return CGSizeMake(refW, refW * 16.0 / 9.0);
+    return CGSizeMake(refW, round(refW * 16.0 / 9.0));
   } else if ([aspectRatio isEqualToString:@"3:4"]) {
-    return CGSizeMake(refW, refW * 4.0 / 3.0);
+    return CGSizeMake(refW, round(refW * 4.0 / 3.0));
   } else if ([aspectRatio isEqualToString:@"1:1"]) {
     return CGSizeMake(refW, refW);
   }
-  // Default: 9:16
-  return CGSizeMake(refW, refW * 16.0 / 9.0);
+  return CGSizeMake(refW, round(refW * 16.0 / 9.0));
 }
 
 - (CIImage *)compositeFront:(CIImage *)front back:(CIImage *)back toCanvas:(CGSize)canvasSize {
@@ -1386,7 +1392,7 @@
   CIImage *frontRight = [frontScaled imageByCroppingToRect:CGRectMake(frontCropX, 0, rightW, canvasH)];
   CIImage *frontRightOffset = [frontRight imageByApplyingTransform:CGAffineTransformMakeTranslation(leftW, 0)];
 
-  return [backLeft imageByCompositingOverImage:frontRight];
+  return [backLeft imageByCompositingOverImage:frontRightOffset];
 }
 
 - (CIImage *)compositeSXFront:(CIImage *)front back:(CIImage *)back
