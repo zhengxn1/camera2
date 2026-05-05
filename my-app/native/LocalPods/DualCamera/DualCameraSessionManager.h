@@ -14,6 +14,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)takePhoto;
 - (void)startRecording;
 - (void)stopRecording;
+- (void)flipCamera;
+- (void)setZoom:(NSString *)camera factor:(CGFloat)factor;
 
 @end
 

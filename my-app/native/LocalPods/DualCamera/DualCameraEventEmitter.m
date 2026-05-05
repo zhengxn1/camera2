@@ -9,6 +9,7 @@ static DualCameraEventEmitter *sharedEmitter = nil;
 RCT_EXPORT_MODULE()
 
 - (instancetype)init {
+  NSLog(@"[DualCamera] DualCameraEventEmitter init called");
   self = [super init];
   if (self) {
     sharedEmitter = self;
@@ -21,7 +22,7 @@ RCT_EXPORT_MODULE()
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-  return @[@"onPhotoSaved", @"onPhotoError", @"onRecordingFinished", @"onRecordingError", @"onSessionError", @"onAudioLevel"];
+  return @[@"onPhotoSaved", @"onPhotoError", @"onRecordingFinished", @"onRecordingError", @"onSessionError", @"onAudioLevel", @"onPipPositionChanged", @"onPipSizeChanged"];
 }
 
 - (void)startObserving { _hasListeners = YES; }
@@ -51,6 +52,14 @@ RCT_EXPORT_MODULE()
 
 - (void)sendAudioLevel:(float)average peak:(float)peak {
   [self sendEventIfNeeded:@"onAudioLevel" body:@{@"average": @(average), @"peak": @(peak)}];
+}
+
+- (void)sendPipPositionChanged:(CGFloat)x y:(CGFloat)y {
+  [self sendEventIfNeeded:@"onPipPositionChanged" body:@{@"x": @(x), @"y": @(y)}];
+}
+
+- (void)sendPipSizeChanged:(CGFloat)size {
+  [self sendEventIfNeeded:@"onPipSizeChanged" body:@{@"size": @(size)}];
 }
 
 - (void)sendEventIfNeeded:(NSString *)name body:(NSDictionary *)body {

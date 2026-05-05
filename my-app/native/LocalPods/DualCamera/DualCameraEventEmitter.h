@@ -10,5 +10,7 @@
 - (void)sendRecordingError:(NSString *)error;
 - (void)sendSessionError:(NSString *)error code:(NSString *)code;
 - (void)sendAudioLevel:(float)average peak:(float)peak;
+- (void)sendPipPositionChanged:(CGFloat)x y:(CGFloat)y;
+- (void)sendPipSizeChanged:(CGFloat)size;
 
 @end

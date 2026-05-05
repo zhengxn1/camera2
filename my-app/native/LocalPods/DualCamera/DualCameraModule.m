@@ -18,6 +18,12 @@ RCT_EXPORT_MODULE()
   return YES;
 }
 
+- (instancetype)init {
+  NSLog(@"[DualCamera] DualCameraModule init called");
+  self = [super init];
+  return self;
+}
+
 RCT_EXPORT_METHOD(startSession) {
   [[DualCameraSessionManager shared] startSession];
 }
@@ -36,6 +42,14 @@ RCT_EXPORT_METHOD(startRecording) {
 
 RCT_EXPORT_METHOD(stopRecording) {
   [[DualCameraSessionManager shared] stopRecording];
+}
+
+RCT_EXPORT_METHOD(flipCamera) {
+  [[DualCameraSessionManager shared] flipCamera];
+}
+
+RCT_EXPORT_METHOD(setZoom:(NSString *)camera factor:(CGFloat)factor) {
+  [[DualCameraSessionManager shared] setZoom:camera factor:factor];
 }
 
 RCT_EXPORT_METHOD(startAudioMetering) {
