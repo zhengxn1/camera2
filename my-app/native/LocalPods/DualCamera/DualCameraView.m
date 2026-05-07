@@ -480,10 +480,11 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     _frontPreviewView.frame = frontFrame;
 
     if ([_currentLayout isEqualToString:@"pip_circle"]) {
+      CGFloat radius = pipRect.size.width / 2;
       if (self.pipMainIsBack) {
-        _frontPreviewView.layer.cornerRadius = frontRect.size.width / 2;
+        _frontPreviewView.layer.cornerRadius = radius;
       } else {
-        _backPreviewView.layer.cornerRadius = backRect.size.width / 2;
+        _backPreviewView.layer.cornerRadius = radius;
       }
     } else {
       _frontPreviewView.layer.cornerRadius = 8;
