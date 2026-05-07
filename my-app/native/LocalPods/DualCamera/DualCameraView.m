@@ -5,6 +5,7 @@
 #import <UIKit/UIKit.h>
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <math.h>
 
 @interface DualCameraLayoutState : NSObject
 @property (nonatomic, copy) NSString *layoutMode;
@@ -93,10 +94,13 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) BOOL realtimeWriterStarted;
 @property (nonatomic, assign) BOOL realtimeFinishRequested;
 @property (nonatomic, assign) BOOL realtimeFinishWhenFirstFrameWritten;
+@property (nonatomic, assign) BOOL realtimeRecordingStartedEventEmitted;
 @property (nonatomic, assign) NSInteger realtimeDroppedFrameCount;
 @property (nonatomic, assign) NSInteger realtimeWrittenVideoFrameCount;
 @property (nonatomic, assign) NSInteger realtimeDroppedAudioSampleCount;
 @property (nonatomic, strong) DualCameraLayoutState *recordingLayoutState;
+@property (nonatomic, assign) CMTime lastRealtimeVideoPTS;
+@property (nonatomic, assign) BOOL hasLastRealtimeVideoPTS;
 
 // canvasSizeAtRecording — only declared here (not in .h), used internally
 @property (nonatomic, assign) CGSize canvasSizeAtRecording;
@@ -162,6 +166,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   _saveAspectRatio = @"9:16";
   _realtimeRecordingState = DualCameraRealtimeRecordingStateIdle;
   _realtimeOutputSize = CGSizeZero;
+  _lastRealtimeVideoPTS = kCMTimeInvalid;
+  _hasLastRealtimeVideoPTS = NO;
   _backZoomFactor = 1.0;
   _canvasSizeAtRecording = CGSizeZero;
   _sxBackOnTop = YES;    // SX: default back on top
@@ -1461,21 +1467,76 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.realtimeWriterStarted = NO;
   self.realtimeFinishRequested = NO;
   self.realtimeFinishWhenFirstFrameWritten = NO;
+  self.realtimeRecordingStartedEventEmitted = NO;
   self.realtimeDroppedFrameCount = 0;
   self.realtimeWrittenVideoFrameCount = 0;
   self.realtimeDroppedAudioSampleCount = 0;
+  self.lastRealtimeVideoPTS = kCMTimeInvalid;
+  self.hasLastRealtimeVideoPTS = NO;
   self.realtimeRecordingState = DualCameraRealtimeRecordingStateIdle;
   self.isDualRecordingActive = NO;
   [self updateDeviceOrientation:[UIDevice currentDevice].orientation];
 }
 
+- (NSNumber *)numberForCMTimeSeconds:(CMTime)time {
+  if (!CMTIME_IS_VALID(time)) return nil;
+  Float64 seconds = CMTimeGetSeconds(time);
+  if (!isfinite(seconds)) return nil;
+  return @(seconds);
+}
+
+- (NSDictionary *)recordingErrorDetailsForError:(NSError *)error
+                                        context:(NSString *)context
+                                    rejectedPTS:(CMTime)rejectedPTS {
+  NSMutableDictionary *details = [NSMutableDictionary dictionary];
+  if (context) details[@"context"] = context;
+  details[@"realtimeState"] = @(self.realtimeRecordingState);
+  details[@"writerStatus"] = self.realtimeAssetWriter ? @(self.realtimeAssetWriter.status) : @(-1);
+  details[@"writtenVideoFrames"] = @(self.realtimeWrittenVideoFrameCount);
+  details[@"droppedVideoFrames"] = @(self.realtimeDroppedFrameCount);
+  details[@"droppedAudioSamples"] = @(self.realtimeDroppedAudioSampleCount);
+  details[@"hardwareCost"] = self.multiCamSession ? @(self.multiCamSession.hardwareCost) : @(0);
+  details[@"systemPressureCost"] = self.multiCamSession ? @(self.multiCamSession.systemPressureCost) : @(0);
+  NSNumber *lastPTS = [self numberForCMTimeSeconds:self.lastRealtimeVideoPTS];
+  if (lastPTS) details[@"lastVideoPTS"] = lastPTS;
+  NSNumber *incomingPTS = [self numberForCMTimeSeconds:rejectedPTS];
+  if (incomingPTS) details[@"incomingVideoPTS"] = incomingPTS;
+
+  if (error) {
+    details[@"domain"] = error.domain ?: @"";
+    details[@"code"] = @(error.code);
+    if (error.localizedFailureReason) details[@"failureReason"] = error.localizedFailureReason;
+    if (error.localizedRecoverySuggestion) details[@"recoverySuggestion"] = error.localizedRecoverySuggestion;
+    if (error.userInfo.count > 0) details[@"userInfo"] = error.userInfo.description;
+  }
+  return details;
+}
+
+- (void)emitRecordingError:(NSString *)message
+                   details:(NSDictionary *)details {
+  NSLog(@"[DualCamera] Recording error: %@ details=%@", message ?: @"Recording error", details ?: @{});
+  [[DualCameraEventEmitter shared] sendRecordingError:message details:details];
+}
+
+- (void)emitRecordingErrorForError:(NSError *)error
+                            prefix:(NSString *)prefix
+                           context:(NSString *)context
+                       rejectedPTS:(CMTime)rejectedPTS {
+  NSString *message = error.localizedDescription ?: prefix ?: @"Recording error";
+  NSDictionary *details = [self recordingErrorDetailsForError:error context:context rejectedPTS:rejectedPTS];
+  [self emitRecordingError:message details:details];
+}
+
 - (void)failRealtimeRecording:(NSString *)message {
   if (self.realtimeRecordingState == DualCameraRealtimeRecordingStateIdle) return;
+  NSDictionary *details = [self recordingErrorDetailsForError:self.realtimeAssetWriter.error
+                                                     context:@"realtime_fail"
+                                                 rejectedPTS:kCMTimeInvalid];
   self.realtimeRecordingState = DualCameraRealtimeRecordingStateFailed;
   self.isDualRecordingActive = NO;
   [self.realtimeAssetWriter cancelWriting];
   [self resetRealtimeRecordingContext];
-  [self emitRecordingError:message ?: @"Realtime recording failed."];
+  [self emitRecordingError:message ?: @"Realtime recording failed." details:details];
 }
 
 - (BOOL)startRealtimeRecordingWithCanvasSize:(CGSize)canvasSize {
@@ -1557,19 +1618,22 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.realtimeWriterStarted = NO;
   self.realtimeFinishRequested = NO;
   self.realtimeFinishWhenFirstFrameWritten = NO;
+  self.realtimeRecordingStartedEventEmitted = NO;
   self.realtimeDroppedFrameCount = 0;
   self.realtimeWrittenVideoFrameCount = 0;
   self.realtimeDroppedAudioSampleCount = 0;
+  self.lastRealtimeVideoPTS = kCMTimeInvalid;
+  self.hasLastRealtimeVideoPTS = NO;
   self.canvasSizeAtRecording = canvasSize;
   self.isDualRecordingActive = YES;
 
   NSDictionary<NSString *, NSValue *> *recordingRects = [self rectsForLayoutState:recordingState canvasSize:outputSize];
-  NSLog(@"[DualCamera] Realtime recording prepared path=%@ layout=%@ aspect=%@ output=%.0fx%.0f canvas=%.0fx%.0f landscape=%d backRect=%@ frontRect=%@",
+  NSLog(@"[DualCamera] Realtime recording prepared path=%@ layout=%@ aspect=%@ output=%.0fx%.0f canvas=%.0fx%.0f landscape=%d hardwareCost=%.3f systemPressureCost=%.3f backRect=%@ frontRect=%@",
         path, recordingState.layoutMode, aspectRatio, outputSize.width, outputSize.height,
         canvasSize.width, canvasSize.height, recordingState.isLandscape,
+        self.multiCamSession.hardwareCost, self.multiCamSession.systemPressureCost,
         NSStringFromCGRect([recordingRects[@"back"] CGRectValue]),
         NSStringFromCGRect([recordingRects[@"front"] CGRectValue]));
-  [self emitRecordingStarted];
   return YES;
 }
 
@@ -1689,7 +1753,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   return [result imageByCroppingToRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];
 }
 
-- (void)appendRealtimeVideoFrameAtTime:(CMTime)time {
+- (void)appendRealtimeVideoFrameAtTime:(CMTime)time source:(NSString *)source {
   if (!self.isDualRecordingActive || self.realtimeFinishRequested) return;
   if (self.realtimeRecordingState != DualCameraRealtimeRecordingStatePrepared &&
       self.realtimeRecordingState != DualCameraRealtimeRecordingStateWriting) {
@@ -1697,6 +1761,16 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   }
   if (self.realtimeAssetWriter.status == AVAssetWriterStatusFailed) {
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed."];
+    return;
+  }
+  if (!CMTIME_IS_VALID(time)) {
+    self.realtimeDroppedFrameCount += 1;
+    return;
+  }
+  if (self.hasLastRealtimeVideoPTS && CMTIME_COMPARE_INLINE(time, <=, self.lastRealtimeVideoPTS)) {
+    self.realtimeDroppedFrameCount += 1;
+    NSLog(@"[DualCamera] Dropping non-monotonic realtime frame source=%@ incoming=%.6f last=%.6f",
+          source ?: @"unknown", CMTimeGetSeconds(time), CMTimeGetSeconds(self.lastRealtimeVideoPTS));
     return;
   }
 
@@ -1742,8 +1816,14 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     self.realtimeDroppedFrameCount += 1;
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Failed to append realtime video frame."];
   } else {
+    self.lastRealtimeVideoPTS = time;
+    self.hasLastRealtimeVideoPTS = YES;
     self.realtimeWrittenVideoFrameCount += 1;
     self.realtimeRecordingState = DualCameraRealtimeRecordingStateWriting;
+    if (!self.realtimeRecordingStartedEventEmitted) {
+      self.realtimeRecordingStartedEventEmitted = YES;
+      [self emitRecordingStarted];
+    }
     if (self.realtimeFinishWhenFirstFrameWritten && self.realtimeWrittenVideoFrameCount > 0) {
       self.realtimeFinishWhenFirstFrameWritten = NO;
       dispatch_async(self.videoDataOutputQueue, ^{
@@ -1786,17 +1866,19 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   NSInteger written = self.realtimeWrittenVideoFrameCount;
 
   if (!writer || !path) {
+    NSDictionary *details = [self recordingErrorDetailsForError:nil context:@"finish_missing_writer" rejectedPTS:kCMTimeInvalid];
     [self resetRealtimeRecordingContext];
-    [self emitRecordingError:@"Realtime recording was not initialized."];
+    [self emitRecordingError:@"Realtime recording was not initialized." details:details];
     return;
   }
 
   if (self.realtimeRecordingState == DualCameraRealtimeRecordingStateFailed ||
       writer.status == AVAssetWriterStatusFailed) {
     NSString *message = writer.error.localizedDescription ?: @"Realtime recording failed.";
+    NSDictionary *details = [self recordingErrorDetailsForError:writer.error context:@"finish_failed_status" rejectedPTS:kCMTimeInvalid];
     [writer cancelWriting];
     [self resetRealtimeRecordingContext];
-    [self emitRecordingError:message];
+    [self emitRecordingError:message details:details];
     return;
   }
 
@@ -1822,8 +1904,9 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
         [self emitRecordingFinished:[NSString stringWithFormat:@"file://%@", path]];
       } else {
         NSString *message = writer.error.localizedDescription ?: @"Realtime recording failed.";
+        NSDictionary *details = [self recordingErrorDetailsForError:writer.error context:@"finish_completion_failed" rejectedPTS:kCMTimeInvalid];
         [self resetRealtimeRecordingContext];
-        [self emitRecordingError:message];
+        [self emitRecordingError:message details:details];
       }
     });
   }];
@@ -2149,8 +2232,15 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.singleRecordingStartPending = NO;
   self.singleRecordingStopRequested = NO;
   if (error) {
-    [self emitRecordingError:error.localizedDescription];
-    return;
+    NSNumber *recordedSuccessfully = error.userInfo[AVErrorRecordingSuccessfullyFinishedKey];
+    if (![recordedSuccessfully boolValue]) {
+      [self emitRecordingErrorForError:error
+                                prefix:@"Movie file recording failed."
+                               context:@"single_movie_finish"
+                           rejectedPTS:kCMTimeInvalid];
+      return;
+    }
+    NSLog(@"[DualCamera] Movie file output finished with recoverable error: %@", error);
   }
 
   // Single-cam fallback mode: emit directly. Multi-cam recording uses AVAssetWriter.
@@ -2188,8 +2278,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     }
   }
 
-  if (self.isDualRecordingActive) {
-    [self appendRealtimeVideoFrameAtTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer)];
+  if (self.isDualRecordingActive && isBackOutput) {
+    [self appendRealtimeVideoFrameAtTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer) source:@"back_clock"];
   }
 }
 

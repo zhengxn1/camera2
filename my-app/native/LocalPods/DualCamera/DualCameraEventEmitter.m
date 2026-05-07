@@ -50,6 +50,14 @@ RCT_EXPORT_MODULE()
   [self sendEventIfNeeded:@"onRecordingError" body:@{@"error": error ?: @"Recording error"}];
 }
 
+- (void)sendRecordingError:(NSString *)error details:(NSDictionary *)details {
+  NSMutableDictionary *body = [@{@"error": error ?: @"Recording error"} mutableCopy];
+  if (details) {
+    [body addEntriesFromDictionary:details];
+  }
+  [self sendEventIfNeeded:@"onRecordingError" body:body];
+}
+
 - (void)sendSessionError:(NSString *)error code:(NSString *)code {
   [self sendEventIfNeeded:@"onSessionError" body:@{@"error": error ?: @"Camera session error", @"code": code ?: @"session_error"}];
 }

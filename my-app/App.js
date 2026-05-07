@@ -177,6 +177,7 @@ export default function App() {
       setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
+      console.warn('[DualCamera] Recording error', event);
       Alert.alert('Recording failed', event.error ?? 'Unknown error');
     });
 
