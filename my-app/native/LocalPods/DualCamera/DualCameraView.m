@@ -479,6 +479,15 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     _backPreviewView.frame = backFrame;
     _frontPreviewView.frame = frontFrame;
 
+    // Calculate pipRect for corner radius
+    CGFloat pipW = canvas.size.width;
+    CGFloat pipS = pipW * MAX(0.05, MIN(0.5, self.pipSize));
+    CGFloat pipCX = pipW * MAX(0, MIN(1, self.pipPositionX));
+    CGFloat pipCY = canvas.size.height * MAX(0, MIN(1, self.pipPositionY));
+    pipCX = MAX(pipS / 2, MIN(pipW - pipS / 2, pipCX));
+    pipCY = MAX(pipS / 2, MIN(canvas.size.height - pipS / 2, pipCY));
+    CGRect pipRect = CGRectMake(pipCX - pipS / 2, pipCY - pipS / 2, pipS, pipS);
+
     if ([_currentLayout isEqualToString:@"pip_circle"]) {
       CGFloat radius = pipRect.size.width / 2;
       if (self.pipMainIsBack) {
