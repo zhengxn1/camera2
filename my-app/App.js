@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -56,6 +56,7 @@ export default function App() {
   const [recordingStarting, setRecordingStarting] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingStopping, setRecordingStopping] = useState(false);
+  const recordingStopRequestedRef = useRef(false);
   const [cameraStatus, setCameraStatus] = useState('loading');
   const [audioLevel, setAudioLevel] = useState(0);
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions({
@@ -142,10 +143,13 @@ export default function App() {
     const subRecordingStarted = eventEmitter.addListener('onRecordingStarted', () => {
       setRecordingStarting(false);
       setRecording(true);
-      setRecordingStopping(false);
+      if (!recordingStopRequestedRef.current) {
+        setRecordingStopping(false);
+      }
     });
 
     const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event) => {
+      recordingStopRequestedRef.current = false;
       setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
@@ -161,6 +165,7 @@ export default function App() {
     });
 
     const subRecordingError = eventEmitter.addListener('onRecordingError', (event) => {
+      recordingStopRequestedRef.current = false;
       setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
@@ -168,6 +173,7 @@ export default function App() {
     });
 
     const subSessionError = eventEmitter.addListener('onSessionError', (event) => {
+      recordingStopRequestedRef.current = false;
       setSaving(false);
       setRecordingStarting(false);
       setRecording(false);
@@ -236,29 +242,30 @@ export default function App() {
 
   const startRecording = useCallback(() => {
     if (!DualCameraModule?.startRecording) { Alert.alert('错误', '原生模块不可用'); return; }
+    recordingStopRequestedRef.current = false;
     setRecordingStarting(true);
     setRecordingStopping(false);
     DualCameraModule.startRecording();
   }, []);
 
   const stopRecording = useCallback(() => {
-    if (recordingStarting) return;
     if (recordingStopping) return;
     if (!DualCameraModule?.stopRecording) return;
+    recordingStopRequestedRef.current = true;
     setRecordingStopping(true);
     DualCameraModule.stopRecording();
-  }, [recordingStarting, recordingStopping]);
+  }, [recordingStopping]);
 
   const handleShutterPress = useCallback(() => {
-    if (recordingStarting) return;
-    if (recording) {
+    if (recordingStopping) return;
+    if (recording || recordingStarting) {
       stopRecording();
     } else if (captureMode === 'picture') {
       takePhoto();
     } else {
       startRecording();
     }
-  }, [recordingStarting, recording, captureMode, takePhoto, startRecording, stopRecording]);
+  }, [recordingStarting, recording, recordingStopping, captureMode, takePhoto, startRecording, stopRecording]);
 
   const handleFlip = useCallback(() => {
     if (!DualCameraModule?.flipCamera) return;
@@ -281,6 +288,7 @@ export default function App() {
   const effectiveZoomLevels = effectiveCamera === 'back' ? [0.5, 1.0, 2.0, 3.0, 5.0] : [1.0, 2.0];
 
   const handleModeSwitch = useCallback((mode) => {
+    if (recording || recordingStarting || recordingStopping) return;
     setCameraMode(mode);
     setDualLayoutRatio(0.5);
     setPipSize(0.28);
@@ -288,7 +296,7 @@ export default function App() {
     setActiveZoomTarget('primary');
     setShowAdjustment(false);
     setIsFlipped(false);
-  }, []);
+  }, [recording, recordingStarting, recordingStopping]);
 
   // 加载中
   if (cameraStatus === 'loading') {
@@ -358,13 +366,13 @@ export default function App() {
         saving={saving}
         onShutterPress={handleShutterPress}
         onModeSwitch={handleModeSwitch}
-        onCaptureModeChange={(m) => { if (!recording) setCaptureMode(m); }}
+        onCaptureModeChange={(m) => { if (!recording && !recordingStarting && !recordingStopping) setCaptureMode(m); }}
         isFlipped={isFlipped}
         onFlip={handleFlip}
       />
 
       {/* Zoom bar — shown for all modes when not recording */}
-      {!recording ? (
+      {!(recording || recordingStarting || recordingStopping) ? (
         <View style={styles.zoomBarContainer} pointerEvents="box-none">
           {/* LR/SX: top bar with camera switch button */}
           {(cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX) ? (
@@ -496,7 +504,7 @@ export default function App() {
       ) : null}
 
       {/* 布局调整面板 */}
-      {showAdjustment && (cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX) ? (
+      {showAdjustment && !(recording || recordingStarting || recordingStopping) && (cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX) ? (
         <View style={styles.adjustmentPanel} pointerEvents="box-none">
           <Text style={styles.adjustmentTitle}>左右比例</Text>
           <View style={styles.sliderRow}>
@@ -518,7 +526,7 @@ export default function App() {
         </View>
       ) : null}
 
-      {showAdjustment && (cameraMode === CAMERA_MODE.PIP_SQUARE || cameraMode === CAMERA_MODE.PIP_CIRCLE) ? (
+      {showAdjustment && !(recording || recordingStarting || recordingStopping) && (cameraMode === CAMERA_MODE.PIP_SQUARE || cameraMode === CAMERA_MODE.PIP_CIRCLE) ? (
         <View style={styles.adjustmentPanel} pointerEvents="box-none">
           <Text style={styles.adjustmentTitle}>画中画</Text>
           <View style={styles.sliderRow}>
@@ -541,7 +549,7 @@ export default function App() {
       ) : null}
 
       {/* Save aspect ratio picker — shown on all modes */}
-      {!recording && !saving ? (
+      {!(recording || recordingStarting || recordingStopping) && !saving ? (
         <View style={styles.aspectPickerContainer} pointerEvents="box-none">
           {['9:16', '3:4', '1:1'].map(r => (
             <Pressable
@@ -559,7 +567,7 @@ export default function App() {
       ) : null}
 
       {/* 调整按钮 */}
-      {(cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX || cameraMode === CAMERA_MODE.PIP_SQUARE || cameraMode === CAMERA_MODE.PIP_CIRCLE) && !recording ? (
+      {(cameraMode === CAMERA_MODE.LR || cameraMode === CAMERA_MODE.SX || cameraMode === CAMERA_MODE.PIP_SQUARE || cameraMode === CAMERA_MODE.PIP_CIRCLE) && !(recording || recordingStarting || recordingStopping) ? (
         <Pressable style={styles.adjustToggleBtn} onPress={() => setShowAdjustment(v => !v)}>
           <Text style={styles.adjustToggleText}>{showAdjustment ? '完成' : '调整'}</Text>
         </Pressable>

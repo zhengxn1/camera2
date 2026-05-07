@@ -46,6 +46,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) AVCapturePhotoOutput *backPhotoOutput;
 @property (nonatomic, strong) AVCapturePhotoOutput *singlePhotoOutput;
 @property (nonatomic, strong) AVCaptureMovieFileOutput *singleMovieOutput;
+@property (nonatomic, assign) BOOL singleRecordingStartPending;
+@property (nonatomic, assign) BOOL singleRecordingStopRequested;
 @property (nonatomic, strong) UIView *frontPreviewView;
 @property (nonatomic, strong) UIView *backPreviewView;
 @property (nonatomic, strong) dispatch_queue_t sessionQueue;
@@ -134,6 +136,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   _isConfigured = NO;
   _isRunning = NO;
   _usingMultiCam = NO;
+  _singleRecordingStartPending = NO;
+  _singleRecordingStopRequested = NO;
   _pendingDualPhotos = [NSMutableDictionary dictionary];
   _compositingQueue = dispatch_queue_create("com.zhengning.dualcamera.compositing", DISPATCH_QUEUE_SERIAL);
   _videoDataOutputQueue = dispatch_queue_create("com.zhengning.dualcamera.videodata", DISPATCH_QUEUE_SERIAL);
@@ -1567,6 +1571,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 
   NSLog(@"[DualCamera] Realtime recording prepared path=%@ aspect=%@ output=%.0fx%.0f canvas=%.0fx%.0f",
         path, aspectRatio, outputSize.width, outputSize.height, canvasSize.width, canvasSize.height);
+  [self emitRecordingStarted];
   return YES;
 }
 
@@ -1731,12 +1736,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     self.realtimeDroppedFrameCount += 1;
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Failed to append realtime video frame."];
   } else {
-    BOOL didStartRecording = self.realtimeWrittenVideoFrameCount == 0;
     self.realtimeWrittenVideoFrameCount += 1;
     self.realtimeRecordingState = DualCameraRealtimeRecordingStateWriting;
-    if (didStartRecording) {
-      [self emitRecordingStarted];
-    }
   }
   CVPixelBufferRelease(pixelBuffer);
 }
@@ -2498,9 +2499,11 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
         [self emitRecordingError:@"Video recording is currently available only for the active single camera or the back camera stream in dual mode."];
         return;
       }
-      if (output.isRecording) return;
+      if (output.isRecording || self.singleRecordingStartPending) return;
 
       NSString *path = [self tempPathWithPrefix:@"dual_"];
+      self.singleRecordingStartPending = YES;
+      self.singleRecordingStopRequested = NO;
       [output startRecordingToOutputFileURL:[NSURL fileURLWithPath:path] recordingDelegate:self];
     }
   });
@@ -2519,6 +2522,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
       AVCaptureMovieFileOutput *output = [self activeRecordingOutput];
       if (output.isRecording) {
         [output stopRecording];
+      } else if (self.singleRecordingStartPending) {
+        self.singleRecordingStopRequested = YES;
       }
     }
   });
@@ -2681,13 +2686,19 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 - (void)captureOutput:(AVCaptureFileOutput *)output
     didStartRecordingToOutputFileAtURL:(NSURL *)fileURL
                        fromConnections:(NSArray<AVCaptureConnection *> *)connections {
+  self.singleRecordingStartPending = NO;
   [self emitRecordingStarted];
+  if (self.singleRecordingStopRequested && output.isRecording) {
+    [output stopRecording];
+  }
 }
 
 - (void)captureOutput:(AVCaptureFileOutput *)output
     didFinishRecordingToOutputFileAtURL:(NSURL *)fileURL
                         fromConnections:(NSArray<AVCaptureConnection *> *)connections
                                   error:(NSError *)error {
+  self.singleRecordingStartPending = NO;
+  self.singleRecordingStopRequested = NO;
   if (error) {
     [self emitRecordingError:error.localizedDescription];
     return;
