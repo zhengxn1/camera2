@@ -2679,6 +2679,12 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 #pragma mark - AVCaptureFileOutputRecordingDelegate
 
 - (void)captureOutput:(AVCaptureFileOutput *)output
+    didStartRecordingToOutputFileAtURL:(NSURL *)fileURL
+                       fromConnections:(NSArray<AVCaptureConnection *> *)connections {
+  [self emitRecordingStarted];
+}
+
+- (void)captureOutput:(AVCaptureFileOutput *)output
     didFinishRecordingToOutputFileAtURL:(NSURL *)fileURL
                         fromConnections:(NSArray<AVCaptureConnection *> *)connections
                                   error:(NSError *)error {
