@@ -33,3 +33,4 @@ last-verified: 2026-04-25
 ## Change Notes
 
 - 2026-04-25: Hardened `my-app/plugin/withDualCamera.js` to copy the local DualCamera pod recursively, patch the app target deterministically after `use_expo_modules!`, avoid duplicate pod entries, and fail early on missing native sources or Podfile. Local Windows verification cannot generate the iOS native project; use macOS/Linux or EAS for final iOS prebuild/build validation.
+- 2026-05-07: Reworked `my-app/App.js` camera controls per `.ai/specs/ui-redesign-spec.md`: aspect ratio moved into a top settings popup, LR/SX layout uses a draggable snapping divider, and zoom controls are now independent per camera area. Native DualCamera module contracts remain unchanged.
