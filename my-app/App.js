@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   AsyncStorage,
-  Dimensions,
   NativeEventEmitter,
   NativeModules,
   PanResponder,
@@ -12,6 +11,7 @@ import {
   requireNativeComponent,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -70,7 +70,7 @@ if (DualCameraEventEmitter) {
 
 export default function App() {
   const [cameraMode, setCameraMode] = useState(CAMERA_MODE.BACK);
-  const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const [captureMode, setCaptureMode] = useState('picture');
   const [saving, setSaving] = useState(false);
   const [recordingStarting, setRecordingStarting] = useState(false);
@@ -536,6 +536,35 @@ function CameraControlsOverlay({
   if (cameraMode === CAMERA_MODE.SX) {
     const firstCamera = isFlipped ? 'front' : 'back';
     const secondCamera = isFlipped ? 'back' : 'front';
+    const isLandscape = screenWidth > screenHeight;
+    if (isLandscape) {
+      return (
+        <>
+          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: screenWidth * dualLayoutRatio - 16 }]}>
+            <ZoomDial
+              camera={firstCamera}
+              currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
+              onZoomChange={onZoomChange}
+            />
+          </ZoomDialOverlay>
+          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: screenWidth * (1 - dualLayoutRatio) - 16 }]}>
+            <ZoomDial
+              camera={secondCamera}
+              currentZoom={secondCamera === 'back' ? backZoom : frontZoom}
+              onZoomChange={onZoomChange}
+            />
+          </ZoomDialOverlay>
+          <AreaDivider
+            mode="lr"
+            ratio={dualLayoutRatio}
+            onRatioChange={onDualLayoutRatioChange}
+            screenWidth={screenWidth}
+            screenHeight={screenHeight}
+          />
+        </>
+      );
+    }
+
     return (
       <>
         <ZoomDialOverlay positionStyle={[styles.sxTopZoomPosition, { top: screenHeight * dualLayoutRatio - 96 }]}>

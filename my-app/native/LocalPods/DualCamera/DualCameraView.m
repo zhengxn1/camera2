@@ -18,10 +18,19 @@
 @property (nonatomic, assign) CGSize outputSize;
 @property (nonatomic, assign) BOOL frontMirrored;
 @property (nonatomic, assign) BOOL backMirrored;
+@property (nonatomic, assign) BOOL isLandscape;
+@property (nonatomic, assign) BOOL primaryOnLeadingEdge;
 @end
 
 @implementation DualCameraLayoutState
 @end
+
+typedef NS_ENUM(NSInteger, DualCameraDeviceOrientation) {
+  DualCameraDeviceOrientationPortrait,
+  DualCameraDeviceOrientationPortraitUpsideDown,
+  DualCameraDeviceOrientationLandscapeLeft,
+  DualCameraDeviceOrientationLandscapeRight
+};
 
 typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   DualCameraRealtimeRecordingStateIdle,
@@ -97,6 +106,11 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) UIPanGestureRecognizer *pipPanGesture;
 @property (nonatomic, strong) UIPinchGestureRecognizer *pipPinchGesture;
 @property (nonatomic, assign) CGFloat lastPipSize;
+@property (nonatomic, assign) DualCameraDeviceOrientation deviceOrientation;
+@property (nonatomic, assign) BOOL frontPreviewMirrored;
+@property (nonatomic, assign) BOOL frontOutputMirrored;
+@property (nonatomic, assign) BOOL backPreviewMirrored;
+@property (nonatomic, assign) BOOL backOutputMirrored;
 
 // Forward declaration for compositePIPFront: called before definition
 - (CIImage *)compositePIPFront:(CIImage *)front back:(CIImage *)back
@@ -157,9 +171,126 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   _canvasSizeAtRecording = CGSizeZero;
   _sxBackOnTop = YES;    // SX: default back on top
   _pipMainIsBack = YES;  // PiP: default back is main (full-screen)
+  _deviceOrientation = DualCameraDeviceOrientationPortrait;
+  _frontPreviewMirrored = YES;
+  _frontOutputMirrored = NO;
+  _backPreviewMirrored = NO;
+  _backOutputMirrored = NO;
   [self createPlaceholderViews];
   [self setupPipGestures];
+  [self startDeviceOrientationMonitoring];
   [[DualCameraSessionManager shared] registerView:self];
+}
+
+#pragma mark - Orientation
+
+- (void)startDeviceOrientationMonitoring {
+  [[UIDevice currentDevice] beginGeneratingDeviceOrientationNotifications];
+  [[NSNotificationCenter defaultCenter] addObserver:self
+                                           selector:@selector(deviceOrientationDidChange:)
+                                               name:UIDeviceOrientationDidChangeNotification
+                                             object:nil];
+  [self updateDeviceOrientation:[UIDevice currentDevice].orientation];
+}
+
+- (void)deviceOrientationDidChange:(NSNotification *)notification {
+  [self updateDeviceOrientation:[UIDevice currentDevice].orientation];
+}
+
+- (void)updateDeviceOrientation:(UIDeviceOrientation)orientation {
+  DualCameraDeviceOrientation next = self.deviceOrientation;
+  switch (orientation) {
+    case UIDeviceOrientationPortrait:
+      next = DualCameraDeviceOrientationPortrait;
+      break;
+    case UIDeviceOrientationPortraitUpsideDown:
+      next = DualCameraDeviceOrientationPortraitUpsideDown;
+      break;
+    case UIDeviceOrientationLandscapeLeft:
+      next = DualCameraDeviceOrientationLandscapeLeft;
+      break;
+    case UIDeviceOrientationLandscapeRight:
+      next = DualCameraDeviceOrientationLandscapeRight;
+      break;
+    default:
+      return;
+  }
+
+  if (next == self.deviceOrientation) return;
+  self.deviceOrientation = next;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [self updateLayout];
+    [self applyCurrentVideoOrientationAndMirroring];
+  });
+}
+
+- (AVCaptureVideoOrientation)currentCaptureVideoOrientation {
+  switch (self.deviceOrientation) {
+    case DualCameraDeviceOrientationPortraitUpsideDown:
+      return AVCaptureVideoOrientationPortraitUpsideDown;
+    case DualCameraDeviceOrientationLandscapeLeft:
+      return AVCaptureVideoOrientationLandscapeRight;
+    case DualCameraDeviceOrientationLandscapeRight:
+      return AVCaptureVideoOrientationLandscapeLeft;
+    case DualCameraDeviceOrientationPortrait:
+    default:
+      return AVCaptureVideoOrientationPortrait;
+  }
+}
+
+- (BOOL)isCurrentDeviceLandscape {
+  return self.deviceOrientation == DualCameraDeviceOrientationLandscapeLeft ||
+         self.deviceOrientation == DualCameraDeviceOrientationLandscapeRight;
+}
+
+- (void)applyOrientation:(AVCaptureVideoOrientation)orientation
+             mirrored:(BOOL)mirrored
+         toConnection:(AVCaptureConnection *)connection {
+  if (!connection) return;
+  if (connection.isVideoOrientationSupported) {
+    connection.videoOrientation = orientation;
+  }
+  if (connection.isVideoMirroringSupported) {
+    connection.automaticallyAdjustsVideoMirroring = NO;
+    connection.videoMirrored = mirrored;
+  }
+}
+
+- (void)applyOrientation:(AVCaptureVideoOrientation)orientation
+             mirrored:(BOOL)mirrored
+            toOutput:(AVCaptureOutput *)output {
+  for (AVCaptureConnection *connection in output.connections) {
+    [self applyOrientation:orientation mirrored:mirrored toConnection:connection];
+  }
+}
+
+- (void)applyCurrentVideoOrientationAndMirroring {
+  AVCaptureVideoOrientation orientation = [self currentCaptureVideoOrientation];
+
+  [self applyOrientation:orientation
+                mirrored:self.backPreviewMirrored
+            toConnection:self.backPreviewLayer.connection];
+  [self applyOrientation:orientation
+                mirrored:self.frontPreviewMirrored
+            toConnection:self.frontPreviewLayer.connection];
+
+  BOOL singlePreviewMirrored = self.singleCameraPosition == AVCaptureDevicePositionFront
+    ? self.frontPreviewMirrored
+    : self.backPreviewMirrored;
+  [self applyOrientation:orientation
+                mirrored:singlePreviewMirrored
+            toConnection:self.singlePreviewLayer.connection];
+
+  [self applyOrientation:orientation mirrored:self.backOutputMirrored toOutput:self.backPhotoOutput];
+  [self applyOrientation:orientation mirrored:self.frontOutputMirrored toOutput:self.frontPhotoOutput];
+  [self applyOrientation:orientation mirrored:self.backOutputMirrored toOutput:self.backVideoDataOutput];
+  [self applyOrientation:orientation mirrored:self.frontOutputMirrored toOutput:self.frontVideoDataOutput];
+
+  BOOL singleOutputMirrored = self.singleCameraPosition == AVCaptureDevicePositionFront
+    ? self.frontOutputMirrored
+    : self.backOutputMirrored;
+  [self applyOrientation:orientation mirrored:singleOutputMirrored toOutput:self.singlePhotoOutput];
+  [self applyOrientation:orientation mirrored:singleOutputMirrored toOutput:self.singleMovieOutput];
 }
 
 #pragma mark - Properties
@@ -376,9 +507,10 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   state.pipMainIsBack = self.pipMainIsBack;
   state.canvasSize = canvasSize;
   state.outputSize = outputSize;
-  // Current preview uses mirrorVideo:NO for both cameras, so recording follows it.
-  state.frontMirrored = NO;
-  state.backMirrored = NO;
+  state.frontMirrored = self.frontOutputMirrored;
+  state.backMirrored = self.backOutputMirrored;
+  state.isLandscape = [self isCurrentDeviceLandscape];
+  state.primaryOnLeadingEdge = self.deviceOrientation != DualCameraDeviceOrientationLandscapeRight;
   return state;
 }
 
@@ -406,14 +538,30 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
       backRect = CGRectMake(primaryW, 0, secondaryW, h);
     }
   } else if ([layout isEqualToString:@"sx"]) {
-    CGFloat primaryH = h * ratio;
-    CGFloat secondaryH = h * (1 - ratio);
-    if (state.sxBackOnTop) {
-      backRect = CGRectMake(0, 0, w, primaryH);
-      frontRect = CGRectMake(0, primaryH, w, secondaryH);
+    if (state.isLandscape) {
+      CGFloat primaryW = w * ratio;
+      CGFloat secondaryW = w * (1 - ratio);
+      CGRect leadingRect = CGRectMake(0, 0, primaryW, h);
+      CGRect trailingRect = CGRectMake(primaryW, 0, secondaryW, h);
+      CGRect primaryRect = state.primaryOnLeadingEdge ? leadingRect : trailingRect;
+      CGRect secondaryRect = state.primaryOnLeadingEdge ? trailingRect : leadingRect;
+      if (state.sxBackOnTop) {
+        backRect = primaryRect;
+        frontRect = secondaryRect;
+      } else {
+        frontRect = primaryRect;
+        backRect = secondaryRect;
+      }
     } else {
-      frontRect = CGRectMake(0, 0, w, primaryH);
-      backRect = CGRectMake(0, primaryH, w, secondaryH);
+      CGFloat primaryH = h * ratio;
+      CGFloat secondaryH = h * (1 - ratio);
+      if (state.sxBackOnTop) {
+        backRect = CGRectMake(0, 0, w, primaryH);
+        frontRect = CGRectMake(0, primaryH, w, secondaryH);
+      } else {
+        frontRect = CGRectMake(0, 0, w, primaryH);
+        backRect = CGRectMake(0, primaryH, w, secondaryH);
+      }
     }
   } else if ([layout isEqualToString:@"pip_square"] || [layout isEqualToString:@"pip_circle"]) {
     CGFloat s = w * MAX(0.05, MIN(0.5, state.pipSize));
@@ -696,7 +844,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     ok = [self addPreviewLayer:self.backPreviewLayer
                       forPort:backVideoPort
                     toSession:self.multiCamSession
-                  mirrorVideo:NO
+                  mirrorVideo:self.backPreviewMirrored
                       failure:&failure
                   failureCode:&failureCode];
   }
@@ -705,7 +853,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     ok = [self addPreviewLayer:self.frontPreviewLayer
                       forPort:frontVideoPort
                     toSession:self.multiCamSession
-                  mirrorVideo:NO
+                  mirrorVideo:self.frontPreviewMirrored
                       failure:&failure
                   failureCode:&failureCode];
   }
@@ -737,7 +885,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
       [self.multiCamSession addOutputWithNoConnections:self.frontVideoDataOutput];
       if (frontVideoPort) {
         AVCaptureConnection *conn = [[AVCaptureConnection alloc] initWithInputPorts:@[frontVideoPort] output:self.frontVideoDataOutput];
-        if (conn.isVideoOrientationSupported) conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+        [self applyOrientation:[self currentCaptureVideoOrientation] mirrored:self.frontOutputMirrored toConnection:conn];
         if ([self.multiCamSession canAddConnection:conn]) {
           [self.multiCamSession addConnection:conn];
           NSLog(@"[DualCamera] frontVideoDataOutput connected to frontVideoPort (no mirror — WYSIWYG)");
@@ -763,7 +911,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
       [self.multiCamSession addOutputWithNoConnections:self.backVideoDataOutput];
       if (backVideoPort) {
         AVCaptureConnection *conn = [[AVCaptureConnection alloc] initWithInputPorts:@[backVideoPort] output:self.backVideoDataOutput];
-        if (conn.isVideoOrientationSupported) conn.videoOrientation = AVCaptureVideoOrientationPortrait;
+        [self applyOrientation:[self currentCaptureVideoOrientation] mirrored:self.backOutputMirrored toConnection:conn];
         if ([self.multiCamSession canAddConnection:conn]) {
           [self.multiCamSession addConnection:conn];
           NSLog(@"[DualCamera] backVideoDataOutput connected to backVideoPort");
@@ -829,6 +977,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.usingMultiCam = YES;
   self.isConfigured = YES;
   [self registerSessionNotifications:self.multiCamSession];
+  [self applyCurrentVideoOrientationAndMirroring];
 
   [self.multiCamSession startRunning];
   self.isRunning = self.multiCamSession.isRunning;
@@ -932,6 +1081,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     [targetView.layer addSublayer:layer];
     self.singlePreviewLayer = layer;
     [self updateLayout];
+    [self applyCurrentVideoOrientationAndMirroring];
   });
 
   self.singleSession = session;
@@ -943,6 +1093,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.usingMultiCam = NO;
   self.isConfigured = YES;
   [self registerSessionNotifications:session];
+  [self applyCurrentVideoOrientationAndMirroring];
 
   if (startRunning) {
     [session startRunning];
@@ -1138,7 +1289,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 
   [session addConnection:connection];
   if (connection.isVideoOrientationSupported) {
-    connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+    connection.videoOrientation = [self currentCaptureVideoOrientation];
   }
   if (mirrorVideo && connection.isVideoMirroringSupported) {
     connection.automaticallyAdjustsVideoMirroring = NO;
@@ -1168,7 +1319,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 
   [session addConnection:connection];
   if (connection.isVideoOrientationSupported) {
-    connection.videoOrientation = AVCaptureVideoOrientationPortrait;
+    connection.videoOrientation = [self currentCaptureVideoOrientation];
   }
   return YES;
 }
@@ -2757,6 +2908,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 
 - (void)dealloc {
   [self unregisterSessionNotifications];
+  [[NSNotificationCenter defaultCenter] removeObserver:self name:UIDeviceOrientationDidChangeNotification object:nil];
+  [[UIDevice currentDevice] endGeneratingDeviceOrientationNotifications];
   if (_realtimeAssetWriter) {
     [_realtimeAssetWriter cancelWriting];
   }
