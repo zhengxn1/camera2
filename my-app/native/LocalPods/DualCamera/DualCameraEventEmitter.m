@@ -22,7 +22,7 @@ RCT_EXPORT_MODULE()
 }
 
 - (NSArray<NSString *> *)supportedEvents {
-  return @[@"onPhotoSaved", @"onPhotoError", @"onRecordingFinished", @"onRecordingError", @"onSessionError", @"onAudioLevel", @"onPipPositionChanged", @"onPipSizeChanged"];
+  return @[@"onPhotoSaved", @"onPhotoError", @"onRecordingStarted", @"onRecordingFinished", @"onRecordingError", @"onSessionError", @"onAudioLevel", @"onPipPositionChanged", @"onPipSizeChanged"];
 }
 
 - (void)startObserving { _hasListeners = YES; }
@@ -36,6 +36,10 @@ RCT_EXPORT_MODULE()
 
 - (void)sendPhotoError:(NSString *)error {
   [self sendEventIfNeeded:@"onPhotoError" body:@{@"error": error ?: @"Photo error"}];
+}
+
+- (void)sendRecordingStarted {
+  [self sendEventIfNeeded:@"onRecordingStarted" body:@{}];
 }
 
 - (void)sendRecordingFinished:(NSString *)uri {

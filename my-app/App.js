@@ -53,6 +53,7 @@ export default function App() {
   const { width: screenWidth, height: screenHeight } = require('react-native').Dimensions.get('window');
   const [captureMode, setCaptureMode] = useState('picture');
   const [saving, setSaving] = useState(false);
+  const [recordingStarting, setRecordingStarting] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recordingStopping, setRecordingStopping] = useState(false);
   const [cameraStatus, setCameraStatus] = useState('loading');
@@ -138,7 +139,14 @@ export default function App() {
       Alert.alert('拍照失败', event.error ?? '未知错误');
     });
 
+    const subRecordingStarted = eventEmitter.addListener('onRecordingStarted', () => {
+      setRecordingStarting(false);
+      setRecording(true);
+      setRecordingStopping(false);
+    });
+
     const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event) => {
+      setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
       try {
@@ -153,6 +161,7 @@ export default function App() {
     });
 
     const subRecordingError = eventEmitter.addListener('onRecordingError', (event) => {
+      setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
       Alert.alert('录制失败', event.error ?? '未知错误');
@@ -160,6 +169,7 @@ export default function App() {
 
     const subSessionError = eventEmitter.addListener('onSessionError', (event) => {
       setSaving(false);
+      setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
       Alert.alert('相机错误', event.error ?? '相机会话启动失败');
@@ -180,6 +190,7 @@ export default function App() {
     return () => {
       subPhotoSaved.remove();
       subPhotoError.remove();
+      subRecordingStarted.remove();
       subRecordingFinished.remove();
       subRecordingError.remove();
       subSessionError.remove();
@@ -225,19 +236,21 @@ export default function App() {
 
   const startRecording = useCallback(() => {
     if (!DualCameraModule?.startRecording) { Alert.alert('错误', '原生模块不可用'); return; }
+    setRecordingStarting(true);
     setRecordingStopping(false);
-    setRecording(true);
     DualCameraModule.startRecording();
   }, []);
 
   const stopRecording = useCallback(() => {
+    if (recordingStarting) return;
     if (recordingStopping) return;
     if (!DualCameraModule?.stopRecording) return;
     setRecordingStopping(true);
     DualCameraModule.stopRecording();
-  }, [recordingStopping]);
+  }, [recordingStarting, recordingStopping]);
 
   const handleShutterPress = useCallback(() => {
+    if (recordingStarting) return;
     if (recording) {
       stopRecording();
     } else if (captureMode === 'picture') {
@@ -245,7 +258,7 @@ export default function App() {
     } else {
       startRecording();
     }
-  }, [recording, captureMode, takePhoto, startRecording, stopRecording]);
+  }, [recordingStarting, recording, captureMode, takePhoto, startRecording, stopRecording]);
 
   const handleFlip = useCallback(() => {
     if (!DualCameraModule?.flipCamera) return;
@@ -340,6 +353,7 @@ export default function App() {
         cameraMode={cameraMode}
         captureMode={captureMode}
         recording={recording}
+        recordingStarting={recordingStarting}
         recordingStopping={recordingStopping}
         saving={saving}
         onShutterPress={handleShutterPress}
@@ -470,10 +484,10 @@ export default function App() {
         </View>
       ) : null}
 
-      {recording ? (
+      {(recording || recordingStarting) ? (
         <View style={styles.recordingIndicator} pointerEvents="none">
           <View style={styles.recordingDot} />
-          <Text style={styles.recordingText}>录制中</Text>
+          <Text style={styles.recordingText}>{recordingStarting ? '准备中' : '录制中'}</Text>
         </View>
       ) : null}
 
@@ -556,7 +570,7 @@ export default function App() {
   );
 }
 
-function BottomBar({ cameraMode, captureMode, recording, recordingStopping, saving, onShutterPress, onModeSwitch, onCaptureModeChange, isFlipped, onFlip }) {
+function BottomBar({ cameraMode, captureMode, recording, recordingStarting, recordingStopping, saving, onShutterPress, onModeSwitch, onCaptureModeChange, isFlipped, onFlip }) {
   return (
     <>
       <View style={styles.rightPanel} pointerEvents="box-none">
@@ -585,12 +599,13 @@ function BottomBar({ cameraMode, captureMode, recording, recordingStopping, savi
             styles.shutterOuter,
             pressed && styles.shutterOuterMuted,
             saving && styles.shutterOuterMuted,
+            recordingStarting && styles.shutterOuterMuted,
             recordingStopping && styles.shutterOuterMuted,
             recording && styles.shutterOuterRecording,
           ]}
           onPress={onShutterPress}
         >
-          <View style={[styles.shutterInner, recording && styles.shutterInnerRecording]} />
+          <View style={[styles.shutterInner, (recording || recordingStarting) && styles.shutterInnerRecording]} />
         </Pressable>
 
         <Pressable

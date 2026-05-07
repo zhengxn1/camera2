@@ -1722,8 +1722,12 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     self.realtimeDroppedFrameCount += 1;
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Failed to append realtime video frame."];
   } else {
+    BOOL didStartRecording = self.realtimeWrittenVideoFrameCount == 0;
     self.realtimeWrittenVideoFrameCount += 1;
     self.realtimeRecordingState = DualCameraRealtimeRecordingStateWriting;
+    if (didStartRecording) {
+      [self emitRecordingStarted];
+    }
   }
   CVPixelBufferRelease(pixelBuffer);
 }
@@ -2602,6 +2606,10 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 
 - (void)emitRecordingFinished:(NSString *)uri {
   [[DualCameraEventEmitter shared] sendRecordingFinished:uri];
+}
+
+- (void)emitRecordingStarted {
+  [[DualCameraEventEmitter shared] sendRecordingStarted];
 }
 
 - (void)emitRecordingError:(NSString *)error {

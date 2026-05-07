@@ -6,6 +6,7 @@
 
 - (void)sendPhotoSaved:(NSString *)uri;
 - (void)sendPhotoError:(NSString *)error;
+- (void)sendRecordingStarted;
 - (void)sendRecordingFinished:(NSString *)uri;
 - (void)sendRecordingError:(NSString *)error;
 - (void)sendSessionError:(NSString *)error code:(NSString *)code;
