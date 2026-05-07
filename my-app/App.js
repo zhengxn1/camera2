@@ -54,6 +54,7 @@ export default function App() {
   const [captureMode, setCaptureMode] = useState('picture');
   const [saving, setSaving] = useState(false);
   const [recording, setRecording] = useState(false);
+  const [recordingStopping, setRecordingStopping] = useState(false);
   const [cameraStatus, setCameraStatus] = useState('loading');
   const [audioLevel, setAudioLevel] = useState(0);
   const [mediaPermission, requestMediaPermission] = MediaLibrary.usePermissions({
@@ -139,6 +140,7 @@ export default function App() {
 
     const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event) => {
       setRecording(false);
+      setRecordingStopping(false);
       try {
         const ok = await ensureMediaPermission();
         if (ok) {
@@ -152,12 +154,14 @@ export default function App() {
 
     const subRecordingError = eventEmitter.addListener('onRecordingError', (event) => {
       setRecording(false);
+      setRecordingStopping(false);
       Alert.alert('录制失败', event.error ?? '未知错误');
     });
 
     const subSessionError = eventEmitter.addListener('onSessionError', (event) => {
       setSaving(false);
       setRecording(false);
+      setRecordingStopping(false);
       Alert.alert('相机错误', event.error ?? '相机会话启动失败');
     });
 
@@ -221,14 +225,17 @@ export default function App() {
 
   const startRecording = useCallback(() => {
     if (!DualCameraModule?.startRecording) { Alert.alert('错误', '原生模块不可用'); return; }
+    setRecordingStopping(false);
     setRecording(true);
     DualCameraModule.startRecording();
   }, []);
 
   const stopRecording = useCallback(() => {
+    if (recordingStopping) return;
     if (!DualCameraModule?.stopRecording) return;
+    setRecordingStopping(true);
     DualCameraModule.stopRecording();
-  }, []);
+  }, [recordingStopping]);
 
   const handleShutterPress = useCallback(() => {
     if (recording) {
@@ -333,6 +340,7 @@ export default function App() {
         cameraMode={cameraMode}
         captureMode={captureMode}
         recording={recording}
+        recordingStopping={recordingStopping}
         saving={saving}
         onShutterPress={handleShutterPress}
         onModeSwitch={handleModeSwitch}
@@ -548,7 +556,7 @@ export default function App() {
   );
 }
 
-function BottomBar({ cameraMode, captureMode, recording, saving, onShutterPress, onModeSwitch, onCaptureModeChange, isFlipped, onFlip }) {
+function BottomBar({ cameraMode, captureMode, recording, recordingStopping, saving, onShutterPress, onModeSwitch, onCaptureModeChange, isFlipped, onFlip }) {
   return (
     <>
       <View style={styles.rightPanel} pointerEvents="box-none">
@@ -577,6 +585,7 @@ function BottomBar({ cameraMode, captureMode, recording, saving, onShutterPress,
             styles.shutterOuter,
             pressed && styles.shutterOuterMuted,
             saving && styles.shutterOuterMuted,
+            recordingStopping && styles.shutterOuterMuted,
             recording && styles.shutterOuterRecording,
           ]}
           onPress={onShutterPress}

@@ -23,6 +23,14 @@
 @implementation DualCameraLayoutState
 @end
 
+typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
+  DualCameraRealtimeRecordingStateIdle,
+  DualCameraRealtimeRecordingStatePrepared,
+  DualCameraRealtimeRecordingStateWriting,
+  DualCameraRealtimeRecordingStateFinishing,
+  DualCameraRealtimeRecordingStateFailed
+};
+
 @interface DualCameraView () <AVCapturePhotoCaptureDelegate, AVCaptureFileOutputRecordingDelegate, AVCaptureVideoDataOutputSampleBufferDelegate, AVCaptureAudioDataOutputSampleBufferDelegate, UIGestureRecognizerDelegate>
 
 @property (nonatomic, strong) AVCaptureMultiCamSession *multiCamSession;
@@ -68,9 +76,14 @@
 @property (nonatomic, strong) AVAssetWriterInput *realtimeAudioInput;
 @property (nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *realtimePixelBufferAdaptor;
 @property (nonatomic, copy) NSString *realtimeRecordingPath;
+@property (nonatomic, copy) NSString *realtimeRecordingAspectRatio;
+@property (nonatomic, assign) CGSize realtimeOutputSize;
+@property (nonatomic, assign) DualCameraRealtimeRecordingState realtimeRecordingState;
 @property (nonatomic, assign) BOOL realtimeWriterStarted;
 @property (nonatomic, assign) BOOL realtimeFinishRequested;
 @property (nonatomic, assign) NSInteger realtimeDroppedFrameCount;
+@property (nonatomic, assign) NSInteger realtimeWrittenVideoFrameCount;
+@property (nonatomic, assign) NSInteger realtimeDroppedAudioSampleCount;
 
 // canvasSizeAtRecording — only declared here (not in .h), used internally
 @property (nonatomic, assign) CGSize canvasSizeAtRecording;
@@ -133,6 +146,8 @@
   _frontZoomFactor = 1.0;
   _backZoomFactor = 1.0;
   _saveAspectRatio = @"9:16";
+  _realtimeRecordingState = DualCameraRealtimeRecordingStateIdle;
+  _realtimeOutputSize = CGSizeZero;
   _backZoomFactor = 1.0;
   _canvasSizeAtRecording = CGSizeZero;
   _sxBackOnTop = YES;    // SX: default back on top
@@ -422,11 +437,14 @@
 
 - (void)updateLayout {
   CGRect canvas = [self canvasBoundsForAspectRatio];
-  CGFloat w = canvas.size.width;
-  CGFloat h = canvas.size.height;
   CGFloat ox = canvas.origin.x;
   CGFloat oy = canvas.origin.y;
-  CGFloat ratio = self.dualLayoutRatio > 0 ? self.dualLayoutRatio : 0.5;
+  DualCameraLayoutState *state = [self currentLayoutStateForCanvasSize:canvas.size outputSize:canvas.size];
+  NSDictionary<NSString *, NSValue *> *rects = [self rectsForLayoutState:state canvasSize:canvas.size];
+  CGRect backRect = [rects[@"back"] CGRectValue];
+  CGRect frontRect = [rects[@"front"] CGRectValue];
+  CGRect backFrame = CGRectOffset(backRect, ox, oy);
+  CGRect frontFrame = CGRectOffset(frontRect, ox, oy);
 
   _frontPreviewView.layer.masksToBounds = YES;
   _backPreviewView.layer.masksToBounds = YES;
@@ -436,62 +454,30 @@
   if ([_currentLayout isEqualToString:@"back"]) {
     _frontPreviewView.hidden = YES;
     _backPreviewView.hidden = NO;
-    _backPreviewView.frame = canvas;
+    _backPreviewView.frame = backFrame;
 
   } else if ([_currentLayout isEqualToString:@"front"]) {
     _backPreviewView.hidden = YES;
     _frontPreviewView.hidden = NO;
-    _frontPreviewView.frame = canvas;
+    _frontPreviewView.frame = frontFrame;
 
   } else if ([_currentLayout isEqualToString:@"lr"]) {
     _backPreviewView.hidden = NO;
     _frontPreviewView.hidden = NO;
-    CGFloat leftW  = w * ratio;
-    CGFloat rightW = w * (1 - ratio);
-    _backPreviewView.frame  = CGRectMake(ox, oy, leftW, h);
-    _frontPreviewView.frame = CGRectMake(ox + leftW, oy, rightW, h);
+    _backPreviewView.frame = backFrame;
+    _frontPreviewView.frame = frontFrame;
 
   } else if ([_currentLayout isEqualToString:@"sx"]) {
     _backPreviewView.hidden = NO;
     _frontPreviewView.hidden = NO;
-    CGFloat largerH  = h * self.dualLayoutRatio;      // user's slider ratio → larger region
-    CGFloat smallerH = h * (1 - self.dualLayoutRatio); // remaining → smaller region
-    if (self.sxBackOnTop) {
-      // back on top (larger), front on bottom (smaller)
-      _backPreviewView.frame  = CGRectMake(ox, oy, w, largerH);
-      _frontPreviewView.frame = CGRectMake(ox, oy + largerH, w, smallerH);
-    } else {
-      // front on top (larger), back on bottom (smaller)
-      _frontPreviewView.frame = CGRectMake(ox, oy, w, largerH);
-      _backPreviewView.frame  = CGRectMake(ox, oy + largerH, w, smallerH);
-    }
+    _backPreviewView.frame = backFrame;
+    _frontPreviewView.frame = frontFrame;
 
   } else if ([_currentLayout isEqualToString:@"pip_square"] || [_currentLayout isEqualToString:@"pip_circle"]) {
-    // PiP: pipMainIsBack=YES → back=main(background), front=small-window(PiP)
-    //         pipMainIsBack=NO  → front=main(background), back=small-window(PiP)
-    CGFloat s = w * self.pipSize;
-    CGFloat cx = w * self.pipPositionX;
-    CGFloat cy = h * self.pipPositionY;
-    // Clamp so pip stays within canvas
-    cx = MAX(s / 2, MIN(w - s / 2, cx));
-    cy = MAX(s / 2, MIN(h - s / 2, cy));
-    CGRect pipRect = CGRectMake(cx - s / 2, cy - s / 2, s, s);
-
-    if (self.pipMainIsBack) {
-      // back = main (full canvas)
-      _backPreviewView.hidden = NO;
-      _backPreviewView.frame = canvas;
-      // front = small window (PiP)
-      _frontPreviewView.hidden = NO;
-      _frontPreviewView.frame = CGRectMake(ox + cx - s / 2, oy + cy - s / 2, s, s);
-    } else {
-      // front = main (full canvas)
-      _frontPreviewView.hidden = NO;
-      _frontPreviewView.frame = canvas;
-      // back = small window (PiP)
-      _backPreviewView.hidden = NO;
-      _backPreviewView.frame = CGRectMake(ox + cx - s / 2, oy + cy - s / 2, s, s);
-    }
+    _backPreviewView.hidden = NO;
+    _frontPreviewView.hidden = NO;
+    _backPreviewView.frame = backFrame;
+    _frontPreviewView.frame = frontFrame;
 
     if ([_currentLayout isEqualToString:@"pip_circle"]) {
       if (self.pipMainIsBack) {
@@ -1455,12 +1441,44 @@
     [NSString stringWithFormat:@"%@%ld.mp4", prefix, (long)[[NSDate date] timeIntervalSince1970]]];
 }
 
-- (CGSize)realtimeRecordingOutputSize {
+- (CGSize)realtimeRecordingOutputSizeForAspectRatio:(NSString *)aspectRatio {
+  if ([aspectRatio isEqualToString:@"3:4"]) {
+    return CGSizeMake(1080, 1440);
+  }
+  if ([aspectRatio isEqualToString:@"1:1"]) {
+    return CGSizeMake(1080, 1080);
+  }
   return CGSizeMake(1080, 1920);
 }
 
+- (void)resetRealtimeRecordingContext {
+  self.realtimeAssetWriter = nil;
+  self.realtimeVideoInput = nil;
+  self.realtimeAudioInput = nil;
+  self.realtimePixelBufferAdaptor = nil;
+  self.realtimeRecordingPath = nil;
+  self.realtimeRecordingAspectRatio = nil;
+  self.realtimeOutputSize = CGSizeZero;
+  self.realtimeWriterStarted = NO;
+  self.realtimeFinishRequested = NO;
+  self.realtimeDroppedFrameCount = 0;
+  self.realtimeWrittenVideoFrameCount = 0;
+  self.realtimeDroppedAudioSampleCount = 0;
+  self.realtimeRecordingState = DualCameraRealtimeRecordingStateIdle;
+  self.isDualRecordingActive = NO;
+}
+
+- (void)failRealtimeRecording:(NSString *)message {
+  if (self.realtimeRecordingState == DualCameraRealtimeRecordingStateIdle) return;
+  self.realtimeRecordingState = DualCameraRealtimeRecordingStateFailed;
+  self.isDualRecordingActive = NO;
+  [self.realtimeAssetWriter cancelWriting];
+  [self resetRealtimeRecordingContext];
+  [self emitRecordingError:message ?: @"Realtime recording failed."];
+}
+
 - (BOOL)startRealtimeRecordingWithCanvasSize:(CGSize)canvasSize {
-  if (self.isDualRecordingActive) return NO;
+  if (self.realtimeRecordingState != DualCameraRealtimeRecordingStateIdle || self.realtimeAssetWriter) return NO;
 
   NSString *path = [self documentsPathWithPrefix:@"dual_realtime_"];
   NSURL *url = [NSURL fileURLWithPath:path];
@@ -1473,7 +1491,8 @@
     return NO;
   }
 
-  CGSize outputSize = [self realtimeRecordingOutputSize];
+  NSString *aspectRatio = self.saveAspectRatio ?: @"9:16";
+  CGSize outputSize = [self realtimeRecordingOutputSizeForAspectRatio:aspectRatio];
   NSDictionary *videoSettings = @{
     AVVideoCodecKey: AVVideoCodecTypeH264,
     AVVideoWidthKey: @(outputSize.width),
@@ -1525,14 +1544,19 @@
   self.realtimeAudioInput = audioInput;
   self.realtimePixelBufferAdaptor = adaptor;
   self.realtimeRecordingPath = path;
+  self.realtimeRecordingAspectRatio = aspectRatio;
+  self.realtimeOutputSize = outputSize;
+  self.realtimeRecordingState = DualCameraRealtimeRecordingStatePrepared;
   self.realtimeWriterStarted = NO;
   self.realtimeFinishRequested = NO;
   self.realtimeDroppedFrameCount = 0;
+  self.realtimeWrittenVideoFrameCount = 0;
+  self.realtimeDroppedAudioSampleCount = 0;
   self.canvasSizeAtRecording = canvasSize;
   self.isDualRecordingActive = YES;
 
-  NSLog(@"[DualCamera] Realtime recording prepared path=%@ output=%.0fx%.0f canvas=%.0fx%.0f",
-        path, outputSize.width, outputSize.height, canvasSize.width, canvasSize.height);
+  NSLog(@"[DualCamera] Realtime recording prepared path=%@ aspect=%@ output=%.0fx%.0f canvas=%.0fx%.0f",
+        path, aspectRatio, outputSize.width, outputSize.height, canvasSize.width, canvasSize.height);
   return YES;
 }
 
@@ -1542,8 +1566,7 @@
   if (CMTIME_IS_INVALID(time)) return NO;
 
   if (![self.realtimeAssetWriter startWriting]) {
-    [self emitRecordingError:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed to start."];
-    self.isDualRecordingActive = NO;
+    [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed to start."];
     return NO;
   }
   [self.realtimeAssetWriter startSessionAtSourceTime:time];
@@ -1651,7 +1674,14 @@
 
 - (void)appendRealtimeVideoFrameAtTime:(CMTime)time {
   if (!self.isDualRecordingActive || self.realtimeFinishRequested) return;
-  if (![self ensureRealtimeWriterStartedAtTime:time]) return;
+  if (self.realtimeRecordingState != DualCameraRealtimeRecordingStatePrepared &&
+      self.realtimeRecordingState != DualCameraRealtimeRecordingStateWriting) {
+    return;
+  }
+  if (self.realtimeAssetWriter.status == AVAssetWriterStatusFailed) {
+    [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed."];
+    return;
+  }
   if (!self.realtimeVideoInput.isReadyForMoreMediaData) {
     self.realtimeDroppedFrameCount += 1;
     return;
@@ -1664,10 +1694,14 @@
     backFrame = self.latestBackFrame;
   }
 
-  CGSize outputSize = [self realtimeRecordingOutputSize];
+  CGSize outputSize = CGSizeEqualToSize(self.realtimeOutputSize, CGSizeZero)
+    ? [self realtimeRecordingOutputSizeForAspectRatio:self.realtimeRecordingAspectRatio ?: self.saveAspectRatio]
+    : self.realtimeOutputSize;
   DualCameraLayoutState *state = [self currentLayoutStateForCanvasSize:self.canvasSizeAtRecording outputSize:outputSize];
   CIImage *composited = [self compositedImageForLayoutState:state front:frontFrame back:backFrame];
   if (!composited) return;
+
+  if (![self ensureRealtimeWriterStartedAtTime:time]) return;
 
   CVPixelBufferRef pixelBuffer = NULL;
   CVPixelBufferPoolRef pool = self.realtimePixelBufferAdaptor.pixelBufferPool;
@@ -1685,22 +1719,36 @@
 
   if (![self.realtimePixelBufferAdaptor appendPixelBuffer:pixelBuffer withPresentationTime:time]) {
     self.realtimeDroppedFrameCount += 1;
-    NSLog(@"[DualCamera] Realtime append video failed: %@", self.realtimeAssetWriter.error.localizedDescription);
+    [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Failed to append realtime video frame."];
+  } else {
+    self.realtimeWrittenVideoFrameCount += 1;
+    self.realtimeRecordingState = DualCameraRealtimeRecordingStateWriting;
   }
   CVPixelBufferRelease(pixelBuffer);
 }
 
 - (void)appendRealtimeAudioSampleBuffer:(CMSampleBufferRef)sampleBuffer {
   if (!self.isDualRecordingActive || self.realtimeFinishRequested || !self.realtimeAudioInput) return;
-  CMTime time = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
-  if (![self ensureRealtimeWriterStartedAtTime:time]) return;
+  if (self.realtimeRecordingState != DualCameraRealtimeRecordingStateWriting) return;
+  if (self.realtimeAssetWriter.status == AVAssetWriterStatusFailed) {
+    [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed."];
+    return;
+  }
   if (self.realtimeAudioInput.isReadyForMoreMediaData) {
-    [self.realtimeAudioInput appendSampleBuffer:sampleBuffer];
+    if (![self.realtimeAudioInput appendSampleBuffer:sampleBuffer]) {
+      self.realtimeDroppedAudioSampleCount += 1;
+      if (self.realtimeAssetWriter.status == AVAssetWriterStatusFailed) {
+        [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Failed to append realtime audio sample."];
+      }
+    }
   }
 }
 
 - (void)finishRealtimeRecording {
-  if (!self.isDualRecordingActive && !self.realtimeAssetWriter) return;
+  if (self.realtimeRecordingState == DualCameraRealtimeRecordingStateIdle ||
+      self.realtimeRecordingState == DualCameraRealtimeRecordingStateFinishing) {
+    return;
+  }
 
   self.realtimeFinishRequested = YES;
   self.isDualRecordingActive = NO;
@@ -1710,35 +1758,47 @@
   AVAssetWriterInput *audioInput = self.realtimeAudioInput;
   NSString *path = self.realtimeRecordingPath;
   NSInteger dropped = self.realtimeDroppedFrameCount;
-
-  self.realtimeAssetWriter = nil;
-  self.realtimeVideoInput = nil;
-  self.realtimeAudioInput = nil;
-  self.realtimePixelBufferAdaptor = nil;
-  self.realtimeRecordingPath = nil;
-  self.realtimeWriterStarted = NO;
-  self.realtimeDroppedFrameCount = 0;
+  NSInteger audioDropped = self.realtimeDroppedAudioSampleCount;
+  NSInteger written = self.realtimeWrittenVideoFrameCount;
 
   if (!writer || !path) {
+    [self resetRealtimeRecordingContext];
     [self emitRecordingError:@"Realtime recording was not initialized."];
     return;
   }
 
-  if (writer.status == AVAssetWriterStatusUnknown) {
+  if (self.realtimeRecordingState == DualCameraRealtimeRecordingStatePrepared ||
+      writer.status == AVAssetWriterStatusUnknown ||
+      written <= 0) {
     [writer cancelWriting];
-    [self emitRecordingError:@"No video frames were recorded."];
+    [self resetRealtimeRecordingContext];
+    [self emitRecordingError:@"录制时间太短或视频帧尚未准备好，请稍后再停止录制。"];
     return;
   }
 
+  if (self.realtimeRecordingState == DualCameraRealtimeRecordingStateFailed ||
+      writer.status == AVAssetWriterStatusFailed) {
+    NSString *message = writer.error.localizedDescription ?: @"Realtime recording failed.";
+    [writer cancelWriting];
+    [self resetRealtimeRecordingContext];
+    [self emitRecordingError:message];
+    return;
+  }
+
+  self.realtimeRecordingState = DualCameraRealtimeRecordingStateFinishing;
   [videoInput markAsFinished];
-  [audioInput markAsFinished];
+  if (audioInput) [audioInput markAsFinished];
   [writer finishWritingWithCompletionHandler:^{
     dispatch_async(dispatch_get_main_queue(), ^{
       if (writer.status == AVAssetWriterStatusCompleted) {
-        NSLog(@"[DualCamera] Realtime recording finished path=%@ dropped=%ld", path, (long)dropped);
+        NSLog(@"[DualCamera] Realtime recording finished path=%@ written=%ld dropped=%ld audioDropped=%ld",
+              path, (long)written, (long)dropped, (long)audioDropped);
+        [self resetRealtimeRecordingContext];
         [self emitRecordingFinished:[NSString stringWithFormat:@"file://%@", path]];
       } else {
-        [self emitRecordingError:writer.error.localizedDescription ?: @"Realtime recording failed."];
+        NSString *message = writer.error.localizedDescription ?: @"Realtime recording failed.";
+        [self resetRealtimeRecordingContext];
+        [self emitRecordingError:message];
       }
     });
   }];
