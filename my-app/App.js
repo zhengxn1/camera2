@@ -41,6 +41,14 @@ const FRONT_ZOOM_LEVELS = [1, 2];
 const SNAP_POINTS = [0.3, 0.5, 0.7];
 const ZOOM_ACTIVE = '#FFD60A';
 const INTERACTION_TOP = Platform.OS === 'ios' ? 60 : 44;
+const MODE_OPTIONS = [
+  { mode: CAMERA_MODE.BACK, label: 'Back', icon: 'back' },
+  { mode: CAMERA_MODE.FRONT, label: 'Front', icon: 'front' },
+  { mode: CAMERA_MODE.PIP_SQUARE, label: 'Picture in picture', icon: 'pipSquare' },
+  { mode: CAMERA_MODE.PIP_CIRCLE, label: 'Circle picture in picture', icon: 'pipCircle' },
+  { mode: CAMERA_MODE.LR, label: 'Left right split', icon: 'lr' },
+  { mode: CAMERA_MODE.SX, label: 'Top bottom split', icon: 'sx' },
+];
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -706,12 +714,16 @@ function BottomBar({ cameraMode, captureMode, recording, recordingStarting, reco
   return (
     <>
       <View style={styles.rightPanel} pointerEvents="box-none">
-        <ModeButton selected={cameraMode === CAMERA_MODE.BACK} disabled={disabled} onPress={() => onModeSwitch(CAMERA_MODE.BACK)} label="Back" />
-        <ModeButton selected={cameraMode === CAMERA_MODE.FRONT} disabled={disabled} onPress={() => onModeSwitch(CAMERA_MODE.FRONT)} label="Front" />
-        <ModeButton selected={cameraMode === CAMERA_MODE.PIP_SQUARE} disabled={disabled} onPress={() => onModeSwitch(CAMERA_MODE.PIP_SQUARE)} label="PiP" />
-        <ModeButton selected={cameraMode === CAMERA_MODE.PIP_CIRCLE} disabled={disabled} onPress={() => onModeSwitch(CAMERA_MODE.PIP_CIRCLE)} label="Circle" />
-        <ModeButton selected={cameraMode === CAMERA_MODE.LR} disabled={disabled} onPress={() => onModeSwitch(CAMERA_MODE.LR)} label="LR" />
-        <ModeButton selected={cameraMode === CAMERA_MODE.SX} disabled={disabled} onPress={() => onModeSwitch(CAMERA_MODE.SX)} label="SX" />
+        {MODE_OPTIONS.map(item => (
+          <ModeButton
+            key={item.mode}
+            selected={cameraMode === item.mode}
+            disabled={disabled}
+            onPress={() => onModeSwitch(item.mode)}
+            label={item.label}
+            icon={item.icon}
+          />
+        ))}
       </View>
 
       <View style={styles.bottomBar} pointerEvents="box-none">
@@ -753,11 +765,55 @@ function BottomBar({ cameraMode, captureMode, recording, recordingStarting, reco
   );
 }
 
-function ModeButton({ selected, disabled, onPress, label }) {
+function ModeButton({ selected, disabled, onPress, label, icon }) {
   return (
-    <Pressable disabled={disabled} style={[styles.modeButton, selected && styles.modeButtonSelected, disabled && styles.disabledControl]} onPress={onPress}>
-      <Text style={[styles.modeLabel, selected && styles.modeLabelSelected]}>{label}</Text>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      disabled={disabled}
+      style={[styles.modeButton, selected && styles.modeButtonSelected, disabled && styles.disabledControl]}
+      onPress={onPress}
+    >
+      <ModeIcon name={icon} selected={selected} />
     </Pressable>
+  );
+}
+
+function ModeIcon({ name, selected }) {
+  const tone = selected ? styles.modeIconSelected : styles.modeIcon;
+  const fill = selected ? styles.modeIconFillSelected : styles.modeIconFill;
+
+  if (name === 'back' || name === 'front') {
+    return (
+      <View style={[styles.cameraIconBody, tone]}>
+        <View style={[styles.cameraIconLens, tone]} />
+        <View style={[styles.cameraIconDot, name === 'front' && styles.cameraIconDotRight, fill]} />
+      </View>
+    );
+  }
+
+  if (name === 'pipSquare' || name === 'pipCircle') {
+    return (
+      <View style={[styles.pipIconFrame, tone]}>
+        <View style={[styles.pipIconInset, name === 'pipCircle' && styles.pipIconInsetCircle, fill]} />
+      </View>
+    );
+  }
+
+  if (name === 'lr') {
+    return (
+      <View style={[styles.splitIconFrame, tone]}>
+        <View style={[styles.splitIconLeft, fill]} />
+        <View style={[styles.splitIconDividerVertical, tone]} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.splitIconFrame, tone]}>
+      <View style={[styles.splitIconTop, fill]} />
+      <View style={[styles.splitIconDividerHorizontal, tone]} />
+    </View>
   );
 }
 
@@ -849,27 +905,113 @@ const styles = StyleSheet.create({
 
   rightPanel: {
     position: 'absolute',
-    right: 0,
+    right: 12,
     top: 0,
     bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 60,
-    gap: 12,
+    gap: 14,
   },
   modeButton: {
-    width: 54,
-    height: 46,
-    borderRadius: 10,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: 'rgba(0,0,0,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  modeButtonSelected: { borderColor: '#4da6ff', backgroundColor: 'rgba(77,166,255,0.25)' },
-  modeLabel: { color: '#ccc', fontSize: 11, fontWeight: '700', textAlign: 'center' },
-  modeLabelSelected: { color: '#4da6ff' },
+  modeButtonSelected: {
+    borderColor: '#4da6ff',
+    backgroundColor: 'rgba(77,166,255,0.18)',
+    shadowColor: '#4da6ff',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
+  },
+  modeIcon: { borderColor: 'rgba(255,255,255,0.58)' },
+  modeIconSelected: { borderColor: '#7bb7ff' },
+  modeIconFill: { backgroundColor: 'rgba(255,255,255,0.48)' },
+  modeIconFillSelected: { backgroundColor: '#7bb7ff' },
+  cameraIconBody: {
+    width: 25,
+    height: 18,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cameraIconLens: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 2,
+  },
+  cameraIconDot: {
+    position: 'absolute',
+    left: 4,
+    top: -4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  cameraIconDotRight: { left: undefined, right: 4 },
+  pipIconFrame: {
+    width: 27,
+    height: 21,
+    borderRadius: 5,
+    borderWidth: 2,
+  },
+  pipIconInset: {
+    position: 'absolute',
+    right: 3,
+    top: 3,
+    width: 9,
+    height: 9,
+    borderRadius: 2,
+  },
+  pipIconInsetCircle: { borderRadius: 4.5 },
+  splitIconFrame: {
+    width: 27,
+    height: 21,
+    borderRadius: 5,
+    borderWidth: 2,
+    overflow: 'hidden',
+  },
+  splitIconLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '50%',
+  },
+  splitIconTop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: '50%',
+  },
+  splitIconDividerVertical: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: '50%',
+    width: 2,
+    marginLeft: -1,
+    borderLeftWidth: 2,
+  },
+  splitIconDividerHorizontal: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '50%',
+    height: 2,
+    marginTop: -1,
+    borderTopWidth: 2,
+  },
   disabledControl: { opacity: 0.38 },
 
   bottomBar: {

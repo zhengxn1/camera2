@@ -4,6 +4,7 @@
 
 @implementation DualCameraSessionManager {
   DualCameraView *_registeredView;
+  BOOL _startRequested;
 }
 
 + (instancetype)shared {
@@ -18,17 +19,22 @@
 - (void)registerView:(DualCameraView *)view {
   NSLog(@"[DualCamera] SessionManager registerView called, view=%@", view);
   _registeredView = view;
+  if (_startRequested && _registeredView) {
+    NSLog(@"[DualCamera] Pending start request found; starting newly registered view.");
+    [_registeredView dc_startSession];
+  }
 }
 
 - (void)startSession {
   NSLog(@"[DualCamera] SessionManager startSession called, registeredView=%@", _registeredView);
+  _startRequested = YES;
   if (!_registeredView) {
-    NSLog(@"[DualCamera] ERROR: No registered view! dualcam native module not connected to JS.");
+    NSLog(@"[DualCamera] No registered view yet; start request will run after view registration.");
     return;
   }
   [_registeredView dc_startSession];
 }
-- (void)stopSession     { [_registeredView dc_stopSession]; }
+- (void)stopSession     { _startRequested = NO; [_registeredView dc_stopSession]; }
 - (void)takePhoto       { [_registeredView dc_takePhoto]; }
 - (void)startRecording  { [_registeredView dc_startRecording]; }
 - (void)stopRecording   { [_registeredView dc_stopRecording]; }
