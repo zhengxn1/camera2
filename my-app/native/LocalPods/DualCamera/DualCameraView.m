@@ -83,6 +83,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) DualCameraRealtimeRecordingState realtimeRecordingState;
 @property (nonatomic, assign) BOOL realtimeWriterStarted;
 @property (nonatomic, assign) BOOL realtimeFinishRequested;
+@property (nonatomic, assign) BOOL realtimeFinishWhenFirstFrameWritten;
 @property (nonatomic, assign) NSInteger realtimeDroppedFrameCount;
 @property (nonatomic, assign) NSInteger realtimeWrittenVideoFrameCount;
 @property (nonatomic, assign) NSInteger realtimeDroppedAudioSampleCount;
@@ -1475,6 +1476,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.realtimeOutputSize = CGSizeZero;
   self.realtimeWriterStarted = NO;
   self.realtimeFinishRequested = NO;
+  self.realtimeFinishWhenFirstFrameWritten = NO;
   self.realtimeDroppedFrameCount = 0;
   self.realtimeWrittenVideoFrameCount = 0;
   self.realtimeDroppedAudioSampleCount = 0;
@@ -1563,6 +1565,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   self.realtimeRecordingState = DualCameraRealtimeRecordingStatePrepared;
   self.realtimeWriterStarted = NO;
   self.realtimeFinishRequested = NO;
+  self.realtimeFinishWhenFirstFrameWritten = NO;
   self.realtimeDroppedFrameCount = 0;
   self.realtimeWrittenVideoFrameCount = 0;
   self.realtimeDroppedAudioSampleCount = 0;
@@ -1649,9 +1652,13 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   CGRect frontRect = [rects[@"front"] CGRectValue];
   NSString *layout = state.layoutMode ?: @"back";
 
-  if ([layout isEqualToString:@"back"] && !back) return nil;
-  if ([layout isEqualToString:@"front"] && !front) return nil;
-  if ([self isDualLayout:layout] && (!front || !back)) return nil;
+  if ([layout isEqualToString:@"back"] && !back) {
+    back = front;
+  }
+  if ([layout isEqualToString:@"front"] && !front) {
+    front = back;
+  }
+  if ([self isDualLayout:layout] && !front && !back) return nil;
 
   CIImage *result = [self blackCanvasSize:canvasSize];
   CIImage *backImage = [self preparedCameraImage:back targetRect:backRect canvasSize:canvasSize mirrored:state.backMirrored];
@@ -1697,10 +1704,6 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed."];
     return;
   }
-  if (!self.realtimeVideoInput.isReadyForMoreMediaData) {
-    self.realtimeDroppedFrameCount += 1;
-    return;
-  }
 
   CIImage *frontFrame = nil;
   CIImage *backFrame = nil;
@@ -1717,6 +1720,10 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   if (!composited) return;
 
   if (![self ensureRealtimeWriterStartedAtTime:time]) return;
+  if (!self.realtimeVideoInput.isReadyForMoreMediaData) {
+    self.realtimeDroppedFrameCount += 1;
+    return;
+  }
 
   CVPixelBufferRef pixelBuffer = NULL;
   CVPixelBufferPoolRef pool = self.realtimePixelBufferAdaptor.pixelBufferPool;
@@ -1738,6 +1745,12 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
   } else {
     self.realtimeWrittenVideoFrameCount += 1;
     self.realtimeRecordingState = DualCameraRealtimeRecordingStateWriting;
+    if (self.realtimeFinishWhenFirstFrameWritten && self.realtimeWrittenVideoFrameCount > 0) {
+      self.realtimeFinishWhenFirstFrameWritten = NO;
+      dispatch_async(self.videoDataOutputQueue, ^{
+        [self finishRealtimeRecording];
+      });
+    }
   }
   CVPixelBufferRelease(pixelBuffer);
 }
@@ -1765,9 +1778,6 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     return;
   }
 
-  self.realtimeFinishRequested = YES;
-  self.isDualRecordingActive = NO;
-
   AVAssetWriter *writer = self.realtimeAssetWriter;
   AVAssetWriterInput *videoInput = self.realtimeVideoInput;
   AVAssetWriterInput *audioInput = self.realtimeAudioInput;
@@ -1782,15 +1792,6 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     return;
   }
 
-  if (self.realtimeRecordingState == DualCameraRealtimeRecordingStatePrepared ||
-      writer.status == AVAssetWriterStatusUnknown ||
-      written <= 0) {
-    [writer cancelWriting];
-    [self resetRealtimeRecordingContext];
-    [self emitRecordingError:@"录制时间太短或视频帧尚未准备好，请稍后再停止录制。"];
-    return;
-  }
-
   if (self.realtimeRecordingState == DualCameraRealtimeRecordingStateFailed ||
       writer.status == AVAssetWriterStatusFailed) {
     NSString *message = writer.error.localizedDescription ?: @"Realtime recording failed.";
@@ -1799,6 +1800,16 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
     [self emitRecordingError:message];
     return;
   }
+
+  if (self.realtimeRecordingState == DualCameraRealtimeRecordingStatePrepared ||
+      writer.status == AVAssetWriterStatusUnknown ||
+      written <= 0) {
+    self.realtimeFinishWhenFirstFrameWritten = YES;
+    return;
+  }
+
+  self.realtimeFinishRequested = YES;
+  self.isDualRecordingActive = NO;
 
   self.realtimeRecordingState = DualCameraRealtimeRecordingStateFinishing;
   [videoInput markAsFinished];
