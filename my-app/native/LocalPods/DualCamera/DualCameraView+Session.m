@@ -523,6 +523,14 @@
 
 // Swaps the multicam back input between ultra-wide and wide-angle without
 // rebuilding the entire session.  Must be called on sessionQueue.
+//
+// Visual smoothing strategy: AVCaptureMultiCamSession does not support virtual
+// devices (BuiltInDualWide / BuiltInTriple), so a physical lens swap is the
+// only path for 0.5x ↔ 1x.  beginConfiguration / commitConfiguration disrupts
+// the preview pipeline for ~100-300ms which the user perceives as a flash.
+// We mask that gap by capturing a UIView snapshot of the current back preview
+// frame and overlaying it over backPreviewView during the swap, then crossfade
+// it out once the new physical camera produces its first frame.
 - (void)switchBackCameraToUltraWide:(BOOL)useUltraWide {
   if (!self.usingMultiCam || !self.multiCamSession) return;
   if (self.backUsingUltraWide == useUltraWide) return;
@@ -547,6 +555,18 @@
     return;
   }
 
+  // Place a freeze-frame cover over backPreviewView before reconfiguring the
+  // session so the user does not see a black flash mid-swap.
+  __block UIView *coverView = nil;
+  dispatch_sync(dispatch_get_main_queue(), ^{
+    UIView *snap = [self.backPreviewView snapshotViewAfterScreenUpdates:NO];
+    if (!snap) return;
+    snap.frame = self.backPreviewView.bounds;
+    snap.userInteractionEnabled = NO;
+    [self.backPreviewView addSubview:snap];
+    coverView = snap;
+  });
+
   [self.multiCamSession beginConfiguration];
 
   if (self.backDeviceInput) {
@@ -555,6 +575,7 @@
 
   if (![self.multiCamSession canAddInput:newInput]) {
     [self.multiCamSession commitConfiguration];
+    [self removePreviewCover:coverView];
     NSLog(@"[DualCamera] switchBackCamera: session rejected new input");
     return;
   }
@@ -563,6 +584,7 @@
   AVCaptureInputPort *newVideoPort = [self videoPortForInput:newInput];
   if (!newVideoPort) {
     [self.multiCamSession commitConfiguration];
+    [self removePreviewCover:coverView];
     NSLog(@"[DualCamera] switchBackCamera: no video port on new input");
     return;
   }
@@ -612,6 +634,29 @@
   self.backDeviceInput = newInput;
   self.backUsingUltraWide = useUltraWide;
   NSLog(@"[DualCamera] switchBackCamera: now using %@", useUltraWide ? @"ultra-wide" : @"wide-angle");
+
+  // Crossfade the freeze-frame out.  The 120ms delay gives the new physical
+  // lens enough time to deliver its first preview frame after commit; the
+  // 200ms fade hides any remaining hardware ramp (AE/AWB convergence).
+  if (coverView) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [UIView animateWithDuration:0.20
+                            delay:0.12
+                          options:UIViewAnimationOptionCurveEaseOut
+                       animations:^{
+        coverView.alpha = 0.0;
+      } completion:^(BOOL finished) {
+        [coverView removeFromSuperview];
+      }];
+    });
+  }
+}
+
+- (void)removePreviewCover:(UIView *)coverView {
+  if (!coverView) return;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    [coverView removeFromSuperview];
+  });
 }
 
 #pragma mark - Device / format helpers
