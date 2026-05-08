@@ -33,6 +33,18 @@
 - (void)dc_setBackZoom:(CGFloat)factor;
 
 // ---------------------------------------------------------------------------
+// Back camera lens switching (multicam only)
+// ---------------------------------------------------------------------------
+
+// Switch the multicam back input between ultra-wide and wide-angle.
+// Must be called on sessionQueue. No-op in single-cam mode.
+- (void)switchBackCameraToUltraWide:(BOOL)useUltraWide;
+
+// Map a user-facing zoom level (0.5x = ultra-wide FOV) to the device
+// videoZoomFactor for the physical camera currently in use.
+- (CGFloat)backDeviceZoomForUserZoom:(CGFloat)userZoom;
+
+// ---------------------------------------------------------------------------
 // Device / format helpers (used by configure methods)
 // ---------------------------------------------------------------------------
 - (AVCaptureDevice *)cameraDeviceForPosition:(AVCaptureDevicePosition)position;

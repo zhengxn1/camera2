@@ -130,6 +130,10 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) BOOL backPreviewMirrored;
 @property (nonatomic, assign) BOOL backOutputMirrored;
 
+// YES when the current multicam back input is the ultra-wide physical camera.
+// Wide-angle is used otherwise. Managed by switchBackCameraToUltraWide:.
+@property (nonatomic, assign) BOOL backUsingUltraWide;
+
 @end
 
 // ---------------------------------------------------------------------------

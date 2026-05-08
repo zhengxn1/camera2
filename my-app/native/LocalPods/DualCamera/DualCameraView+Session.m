@@ -69,7 +69,19 @@
 #pragma mark - Multi-cam configuration
 
 - (void)configureAndStartMultiCamSession {
-  AVCaptureDevice *backDevice = [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
+  // Choose physical back lens based on the requested zoom level at startup.
+  // Ultra-wide covers user-facing zooms < 1.0x; wide-angle handles >= 1.0x.
+  BOOL startWithUltraWide = (self.backZoomFactor < 1.0);
+  AVCaptureDevice *backDevice = startWithUltraWide
+    ? [self ultraWideCameraDevice]
+    : [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
+  // Fall back to wide-angle if ultra-wide is absent on this device.
+  if (!backDevice) {
+    backDevice = [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
+    startWithUltraWide = NO;
+  }
+  self.backUsingUltraWide = startWithUltraWide;
+
   AVCaptureDevice *frontDevice = [self cameraDeviceForPosition:AVCaptureDevicePositionFront];
   if (!backDevice || !frontDevice) {
     [self emitSessionError:@"Could not find both front and back cameras." code:@"camera_not_found"];
@@ -459,9 +471,19 @@
 - (void)dc_setBackZoom:(CGFloat)factor {
   self.backZoomFactor = factor;
   dispatch_async(self.sessionQueue, ^{
-    AVCaptureDevice *backDevice = [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
+    if (self.usingMultiCam) {
+      BOOL needsUltraWide = (factor < 1.0);
+      if (needsUltraWide != self.backUsingUltraWide) {
+        [self switchBackCameraToUltraWide:needsUltraWide];
+      }
+    }
+
+    AVCaptureDevice *backDevice = self.usingMultiCam
+      ? self.backDeviceInput.device
+      : [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
     if (!backDevice) return;
-    CGFloat f = factor;
+
+    CGFloat f = [self backDeviceZoomForUserZoom:factor];
     if (f < backDevice.minAvailableVideoZoomFactor) {
       f = backDevice.minAvailableVideoZoomFactor;
     } else if (f > backDevice.maxAvailableVideoZoomFactor) {
@@ -475,6 +497,113 @@
   });
 }
 
+// Maps a user-facing zoom level to the physical device's videoZoomFactor.
+//
+// Ultra-wide native FOV = 0.5x relative to wide-angle (approximately 13mm vs 26mm).
+// So:  device_zoom = user_zoom / 0.5  = user_zoom * 2.0  (for ultra-wide)
+//      device_zoom = user_zoom                            (for wide-angle)
+//
+// Examples:  user 0.5x → ultra-wide @ 1.0 (native FOV, no digital zoom)
+//            user 0.7x → ultra-wide @ 1.4
+//            user 1.0x → wide-angle @ 1.0
+//            user 2.0x → wide-angle @ 2.0
+- (CGFloat)backDeviceZoomForUserZoom:(CGFloat)userZoom {
+  return self.backUsingUltraWide ? userZoom * 2.0 : userZoom;
+}
+
+// Swaps the multicam back input between ultra-wide and wide-angle without
+// rebuilding the entire session.  Must be called on sessionQueue.
+- (void)switchBackCameraToUltraWide:(BOOL)useUltraWide {
+  if (!self.usingMultiCam || !self.multiCamSession) return;
+  if (self.backUsingUltraWide == useUltraWide) return;
+
+  AVCaptureDevice *newDevice = useUltraWide
+    ? [self ultraWideCameraDevice]
+    : [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
+  if (!newDevice) {
+    NSLog(@"[DualCamera] switchBackCamera: target lens not available — skipping");
+    return;
+  }
+
+  NSError *error = nil;
+  if (![self configureDeviceForMultiCam:newDevice error:&error]) {
+    NSLog(@"[DualCamera] switchBackCamera: format config failed: %@", error);
+    return;
+  }
+
+  AVCaptureDeviceInput *newInput = [AVCaptureDeviceInput deviceInputWithDevice:newDevice error:&error];
+  if (!newInput) {
+    NSLog(@"[DualCamera] switchBackCamera: input creation failed: %@", error);
+    return;
+  }
+
+  [self.multiCamSession beginConfiguration];
+
+  if (self.backDeviceInput) {
+    [self.multiCamSession removeInput:self.backDeviceInput];
+  }
+
+  if (![self.multiCamSession canAddInput:newInput]) {
+    [self.multiCamSession commitConfiguration];
+    NSLog(@"[DualCamera] switchBackCamera: session rejected new input");
+    return;
+  }
+  [self.multiCamSession addInputWithNoConnections:newInput];
+
+  AVCaptureInputPort *newVideoPort = [self videoPortForInput:newInput];
+  if (!newVideoPort) {
+    [self.multiCamSession commitConfiguration];
+    NSLog(@"[DualCamera] switchBackCamera: no video port on new input");
+    return;
+  }
+
+  // Reconnect back preview layer.
+  if (self.backPreviewLayer) {
+    AVCaptureConnection *c = [[AVCaptureConnection alloc]
+      initWithInputPort:newVideoPort videoPreviewLayer:self.backPreviewLayer];
+    if ([self.multiCamSession canAddConnection:c]) {
+      [self.multiCamSession addConnection:c];
+      if (c.isVideoOrientationSupported) {
+        c.videoOrientation = [self currentCaptureVideoOrientation];
+      }
+      if (self.backPreviewMirrored && c.isVideoMirroringSupported) {
+        c.automaticallyAdjustsVideoMirroring = NO;
+        c.videoMirrored = YES;
+      }
+    }
+  }
+
+  // Reconnect back photo output.
+  if (self.backPhotoOutput) {
+    AVCaptureConnection *c = [[AVCaptureConnection alloc]
+      initWithInputPorts:@[newVideoPort] output:self.backPhotoOutput];
+    if ([self.multiCamSession canAddConnection:c]) {
+      [self.multiCamSession addConnection:c];
+      if (c.isVideoOrientationSupported) {
+        c.videoOrientation = [self currentCaptureVideoOrientation];
+      }
+    }
+  }
+
+  // Reconnect back video data output.
+  if (self.backVideoDataOutput) {
+    AVCaptureConnection *c = [[AVCaptureConnection alloc]
+      initWithInputPorts:@[newVideoPort] output:self.backVideoDataOutput];
+    [self applyOrientation:[self currentCaptureVideoOrientation]
+                  mirrored:self.backOutputMirrored
+              toConnection:c];
+    if ([self.multiCamSession canAddConnection:c]) {
+      [self.multiCamSession addConnection:c];
+    }
+  }
+
+  [self.multiCamSession commitConfiguration];
+
+  self.backDeviceInput = newInput;
+  self.backUsingUltraWide = useUltraWide;
+  NSLog(@"[DualCamera] switchBackCamera: now using %@", useUltraWide ? @"ultra-wide" : @"wide-angle");
+}
+
 #pragma mark - Device / format helpers
 
 - (AVCaptureDevice *)cameraDeviceForPosition:(AVCaptureDevicePosition)position {
@@ -482,6 +611,14 @@
     discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInWideAngleCamera]
     mediaType:AVMediaTypeVideo
     position:position];
+  return discovery.devices.firstObject;
+}
+
+- (AVCaptureDevice *)ultraWideCameraDevice {
+  AVCaptureDeviceDiscoverySession *discovery = [AVCaptureDeviceDiscoverySession
+    discoverySessionWithDeviceTypes:@[AVCaptureDeviceTypeBuiltInUltraWideCamera]
+    mediaType:AVMediaTypeVideo
+    position:AVCaptureDevicePositionBack];
   return discovery.devices.firstObject;
 }
 
@@ -506,7 +643,10 @@
   device.activeVideoMinFrameDuration = CMTimeMake(1, 30);
   device.activeVideoMaxFrameDuration = CMTimeMake(1, 30);
 
-  CGFloat zoomFactor = (device.position == AVCaptureDevicePositionBack) ? self.backZoomFactor : self.frontZoomFactor;
+  CGFloat userZoom = (device.position == AVCaptureDevicePositionBack) ? self.backZoomFactor : self.frontZoomFactor;
+  CGFloat zoomFactor = (device.position == AVCaptureDevicePositionBack)
+    ? [self backDeviceZoomForUserZoom:userZoom]
+    : userZoom;
   CGFloat clampedZoom = zoomFactor;
   if (clampedZoom < device.minAvailableVideoZoomFactor) {
     clampedZoom = device.minAvailableVideoZoomFactor;
