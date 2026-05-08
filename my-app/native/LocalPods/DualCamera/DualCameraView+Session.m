@@ -133,6 +133,16 @@
 
   AVCapturePhotoOutput *backPhotoOutput = [[AVCapturePhotoOutput alloc] init];
   AVCapturePhotoOutput *frontPhotoOutput = [[AVCapturePhotoOutput alloc] init];
+  // Enable high-resolution still capture on iOS<16 so capturePhoto walks the
+  // full multi-frame still pipeline (HDR/Smart-HDR + denoise) instead of
+  // returning a downsampled video-buffer-grade frame.  iOS 16+ derives
+  // maxPhotoDimensions automatically from the active format.
+  if (@available(iOS 16.0, *)) {
+    // maxPhotoDimensions is read-only on output; nothing to set here.
+  } else {
+    backPhotoOutput.highResolutionCaptureEnabled = YES;
+    frontPhotoOutput.highResolutionCaptureEnabled = YES;
+  }
 
   BOOL ok = YES;
   NSString *failure = nil;

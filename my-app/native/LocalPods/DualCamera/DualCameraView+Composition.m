@@ -24,12 +24,30 @@
 }
 
 - (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size {
+  return [self scaledCIImage:image toSize:size highQuality:NO];
+}
+
+- (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size highQuality:(BOOL)highQuality {
   CGFloat scaleX = size.width / image.extent.size.width;
   CGFloat scaleY = size.height / image.extent.size.height;
-  CIFilter *transformFilter = [CIFilter filterWithName:@"CIAffineTransform"];
-  [transformFilter setValue:image forKey:kCIInputImageKey];
-  [transformFilter setValue:[NSValue valueWithCGAffineTransform:CGAffineTransformMakeScale(scaleX, scaleY)] forKey:kCIInputTransformKey];
-  CIImage *result = transformFilter.outputImage;
+
+  CIImage *result = nil;
+  if (highQuality) {
+    // Lanczos preserves edge sharpness when downscaling photo-sized buffers.
+    // Approximated as: uniform scale Y, then aspect ratio adjustment in X.
+    CIFilter *lanczos = [CIFilter filterWithName:@"CILanczosScaleTransform"];
+    [lanczos setValue:image forKey:kCIInputImageKey];
+    [lanczos setValue:@(scaleY) forKey:kCIInputScaleKey];
+    [lanczos setValue:@(scaleY != 0 ? scaleX / scaleY : 1.0) forKey:kCIInputAspectRatioKey];
+    result = lanczos.outputImage;
+  }
+
+  if (!result) {
+    CIFilter *transformFilter = [CIFilter filterWithName:@"CIAffineTransform"];
+    [transformFilter setValue:image forKey:kCIInputImageKey];
+    [transformFilter setValue:[NSValue valueWithCGAffineTransform:CGAffineTransformMakeScale(scaleX, scaleY)] forKey:kCIInputTransformKey];
+    result = transformFilter.outputImage;
+  }
   if (!result) return image;
   CGFloat offsetX = -result.extent.origin.x;
   CGFloat offsetY = -result.extent.origin.y;
@@ -37,6 +55,35 @@
     result = [result imageByApplyingTransform:CGAffineTransformMakeTranslation(offsetX, offsetY)];
   }
   return result;
+}
+
+#pragma mark - EXIF orientation helpers
+
+- (CIImage *)imageByApplyingExifOrientation:(CGImagePropertyOrientation)orientation
+                                     toImage:(CIImage *)image {
+  if (!image) return nil;
+  if (orientation == kCGImagePropertyOrientationUp) return image;
+  return [image imageByApplyingOrientation:orientation];
+}
+
+// EXIF orientation table for AVCaptureVideoDataOutput buffers when the
+// connection's videoOrientation is left at the default (Portrait for back,
+// Portrait for front).  Front-facing sensors have an opposite native
+// orientation, so portrait/landscape mappings are flipped.
+- (CGImagePropertyOrientation)exifOrientationForCameraPosition:(AVCaptureDevicePosition)position
+                                              deviceOrientation:(NSInteger)deviceOrientation {
+  BOOL isFront = (position == AVCaptureDevicePositionFront);
+  switch ((DualCameraDeviceOrientation)deviceOrientation) {
+    case DualCameraDeviceOrientationPortrait:
+      return isFront ? kCGImagePropertyOrientationLeftMirrored : kCGImagePropertyOrientationRight;
+    case DualCameraDeviceOrientationPortraitUpsideDown:
+      return isFront ? kCGImagePropertyOrientationRightMirrored : kCGImagePropertyOrientationLeft;
+    case DualCameraDeviceOrientationLandscapeLeft:
+      return isFront ? kCGImagePropertyOrientationDownMirrored : kCGImagePropertyOrientationUp;
+    case DualCameraDeviceOrientationLandscapeRight:
+      return isFront ? kCGImagePropertyOrientationUpMirrored : kCGImagePropertyOrientationDown;
+  }
+  return kCGImagePropertyOrientationUp;
 }
 
 - (CIImage *)circleAlphaMaskForRect:(CGRect)rect canvasSize:(CGSize)canvasSize {
@@ -55,6 +102,18 @@
                       targetRect:(CGRect)targetRect
                       canvasSize:(CGSize)canvasSize
                         mirrored:(BOOL)mirrored {
+  return [self preparedCameraImage:image
+                        targetRect:targetRect
+                        canvasSize:canvasSize
+                          mirrored:mirrored
+                       highQuality:NO];
+}
+
+- (CIImage *)preparedCameraImage:(CIImage *)image
+                      targetRect:(CGRect)targetRect
+                      canvasSize:(CGSize)canvasSize
+                        mirrored:(BOOL)mirrored
+                     highQuality:(BOOL)highQuality {
   if (!image || CGRectIsEmpty(targetRect)) return nil;
 
   CIImage *source = image;
@@ -76,7 +135,9 @@
   }
 
   CGFloat scale = MAX(targetRect.size.width / sourceW, targetRect.size.height / sourceH);
-  CIImage *scaled = [self scaledCIImage:source toSize:CGSizeMake(sourceW * scale, sourceH * scale)];
+  CIImage *scaled = [self scaledCIImage:source
+                                 toSize:CGSizeMake(sourceW * scale, sourceH * scale)
+                            highQuality:highQuality];
   CGFloat cropX = MAX(0, (scaled.extent.size.width - targetRect.size.width) / 2.0);
   CGFloat cropY = MAX(0, (scaled.extent.size.height - targetRect.size.height) / 2.0);
   CIImage *cropped = [scaled imageByCroppingToRect:CGRectMake(cropX, cropY, targetRect.size.width, targetRect.size.height)];
@@ -92,6 +153,13 @@
 - (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
                                      front:(CIImage *)front
                                       back:(CIImage *)back {
+  return [self compositedImageForLayoutState:state front:front back:back highQuality:NO];
+}
+
+- (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
+                                     front:(CIImage *)front
+                                      back:(CIImage *)back
+                                highQuality:(BOOL)highQuality {
   CGSize canvasSize = state.outputSize;
   NSDictionary<NSString *, NSValue *> *rects = [self rectsForLayoutState:state canvasSize:canvasSize];
 
@@ -111,8 +179,8 @@
   if ([self isDualLayout:layout] && !front && !back) return nil;
 
   CIImage *result = [self blackCanvasSize:canvasSize];
-  CIImage *backImage = [self preparedCameraImage:back targetRect:backRect canvasSize:canvasSize mirrored:state.backMirrored];
-  CIImage *frontImage = [self preparedCameraImage:front targetRect:frontRect canvasSize:canvasSize mirrored:state.frontMirrored];
+  CIImage *backImage = [self preparedCameraImage:back targetRect:backRect canvasSize:canvasSize mirrored:state.backMirrored highQuality:highQuality];
+  CIImage *frontImage = [self preparedCameraImage:front targetRect:frontRect canvasSize:canvasSize mirrored:state.frontMirrored highQuality:highQuality];
 
   BOOL isPip = [layout isEqualToString:@"pip_square"] || [layout isEqualToString:@"pip_circle"];
   BOOL isCircle = [layout isEqualToString:@"pip_circle"];

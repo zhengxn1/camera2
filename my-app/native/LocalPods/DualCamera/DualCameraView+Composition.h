@@ -20,7 +20,23 @@
 - (CIImage *)blackCanvasSize:(CGSize)size;
 - (CIImage *)clearCanvasSize:(CGSize)size;
 - (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size;
+- (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size highQuality:(BOOL)highQuality;
 - (CIImage *)circleAlphaMaskForRect:(CGRect)rect canvasSize:(CGSize)canvasSize;
+
+/// Apply an EXIF orientation to a raw camera CIImage so the upright "scene up"
+/// is at the top.  Used as the single source of truth for frame orientation
+/// instead of relying on AVCaptureConnection.videoOrientation, which produces
+/// inconsistent results between front and back cameras in some edge cases.
+- (CIImage *)imageByApplyingExifOrientation:(CGImagePropertyOrientation)orientation
+                                    toImage:(CIImage *)image;
+
+/// Map the current device orientation to the EXIF orientation that should be
+/// applied to a sample-buffer-sourced CIImage from a video data output whose
+/// connection.videoOrientation is *not* configured (or is configured to
+/// Portrait).  position selects front/back because the two sensors have
+/// opposite native orientations on iOS.
+- (CGImagePropertyOrientation)exifOrientationForCameraPosition:(AVCaptureDevicePosition)position
+                                             deviceOrientation:(NSInteger)deviceOrientation;
 
 /// Scale-to-fill + optional horizontal mirror, placed inside targetRect on a canvasSize canvas.
 - (CIImage *)preparedCameraImage:(CIImage *)image
@@ -28,10 +44,25 @@
                       canvasSize:(CGSize)canvasSize
                         mirrored:(BOOL)mirrored;
 
+/// Same as preparedCameraImage:targetRect:canvasSize:mirrored: but lets the
+/// caller request high-quality (Lanczos) scaling.  Photo composition uses YES;
+/// realtime video composition uses NO to preserve 30fps throughput.
+- (CIImage *)preparedCameraImage:(CIImage *)image
+                      targetRect:(CGRect)targetRect
+                      canvasSize:(CGSize)canvasSize
+                        mirrored:(BOOL)mirrored
+                     highQuality:(BOOL)highQuality;
+
 /// Full compositing pass: black canvas + back + front (respects PiP, circle mask).
 - (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
                                      front:(CIImage *)front
                                       back:(CIImage *)back;
+
+/// High-quality variant — uses Lanczos scaling for photo capture.
+- (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
+                                     front:(CIImage *)front
+                                      back:(CIImage *)back
+                                highQuality:(BOOL)highQuality;
 
 // ---------------------------------------------------------------------------
 // File / size utilities

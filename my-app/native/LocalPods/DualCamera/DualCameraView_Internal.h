@@ -11,6 +11,7 @@
 #import <CoreImage/CoreImage.h>
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
+#import <ImageIO/ImageIO.h>
 #import <math.h>
 
 // ---------------------------------------------------------------------------
@@ -96,6 +97,20 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) BOOL pendingDualPhotosFront;
 @property (nonatomic, assign) BOOL pendingDualPhotosBack;
 @property (nonatomic, assign) BOOL isDualRecordingActive;
+
+// High-resolution dual photo capture state.
+// When the user takes a photo in multicam dual layout, both AVCapturePhotoOutputs
+// are triggered in parallel; their CIImages and metadata accumulate here until
+// both arrive, at which point compositing happens on a background queue.
+@property (nonatomic, strong) CIImage *pendingPhotoFrontImage;
+@property (nonatomic, strong) CIImage *pendingPhotoBackImage;
+@property (nonatomic, assign) CGImagePropertyOrientation pendingPhotoFrontOrientation;
+@property (nonatomic, assign) CGImagePropertyOrientation pendingPhotoBackOrientation;
+@property (nonatomic, assign) BOOL pendingPhotoFrontReceived;
+@property (nonatomic, assign) BOOL pendingPhotoBackReceived;
+@property (nonatomic, assign) BOOL pendingPhotoCaptureInFlight;
+@property (nonatomic, assign) CGSize pendingPhotoCanvasSize;
+@property (nonatomic, strong) DualCameraLayoutState *pendingPhotoLayoutState;
 @property (nonatomic, strong) AVAssetExportSession *videoExportSession;
 @property (nonatomic, strong) dispatch_queue_t compositingQueue;
 @property (nonatomic, strong) AVAssetWriter *realtimeAssetWriter;
