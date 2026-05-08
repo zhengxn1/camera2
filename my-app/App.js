@@ -42,8 +42,6 @@ const SNAP_POINTS = [0.3, 0.5, 0.7];
 const ZOOM_ACTIVE = '#FFD60A';
 const INTERACTION_TOP = Platform.OS === 'ios' ? 60 : 44;
 const MODE_OPTIONS = [
-  { mode: CAMERA_MODE.BACK, label: 'Back', icon: 'back' },
-  { mode: CAMERA_MODE.FRONT, label: 'Front', icon: 'front' },
   { mode: CAMERA_MODE.PIP_SQUARE, label: 'Picture in picture', icon: 'pipSquare' },
   { mode: CAMERA_MODE.PIP_CIRCLE, label: 'Circle picture in picture', icon: 'pipCircle' },
   { mode: CAMERA_MODE.LR, label: 'Left right split', icon: 'lr' },
