@@ -150,8 +150,6 @@
   NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
     [NSString stringWithFormat:@"dual_composited_%ld.jpg", (long)[[NSDate date] timeIntervalSince1970]]];
 
-  CIContext *ctx = [CIContext contextWithOptions:@{kCIContextUseSoftwareRenderer: @NO}];
-
   CIImage *toSave = ciImage;
   if (ciImage.extent.origin.x != 0 || ciImage.extent.origin.y != 0) {
     CGFloat ox = -ciImage.extent.origin.x;
@@ -159,16 +157,23 @@
     toSave = [ciImage imageByApplyingTransform:CGAffineTransformMakeTranslation(ox, oy)];
   }
 
-  CGImageRef cgImg = [ctx createCGImage:toSave fromRect:toSave.extent];
-  if (!cgImg) return nil;
+  // Use CIContext's native JPEG writer — one-step conversion with explicit sRGB
+  // output colour space.  Avoids the CIImage→CGImage→UIImage→JPEG chain whose
+  // implicit colour-space round-trips cause the washed-out appearance.
+  CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  NSURL *fileURL = [NSURL fileURLWithPath:path];
+  NSError *writeError = nil;
+  BOOL ok = [self.ciContext writeJPEGRepresentationOfImage:toSave
+                                                    toURL:fileURL
+                                               colorSpace:srgb
+                                                  options:@{}
+                                                    error:&writeError];
+  CGColorSpaceRelease(srgb);
 
-  UIImage *uiImage = [UIImage imageWithCGImage:cgImg];
-  CGImageRelease(cgImg);
-
-  NSData *jpgData = UIImageJPEGRepresentation(uiImage, 0.9);
-  if (!jpgData) return nil;
-
-  [jpgData writeToFile:path atomically:YES];
+  if (!ok) {
+    NSLog(@"[DualCamera] saveCIImageAsJPEG failed: %@", writeError);
+    return nil;
+  }
   return path;
 }
 

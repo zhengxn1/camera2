@@ -261,7 +261,17 @@
   CVImageBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
   if (!pixelBuffer) return;
 
-  CIImage *ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+  // Preserve the pixel buffer's embedded colour space so Core Image does not
+  // misinterpret gamma-encoded sRGB/P3 data as linear light (which causes
+  // overexposed / washed-out output when compositing and saving).
+  CGColorSpaceRef bufferCS = CVImageBufferGetColorSpace(pixelBuffer);
+  CIImage *ciImage;
+  if (bufferCS) {
+    ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer
+                                      options:@{(id)kCIImageColorSpace: (__bridge id)bufferCS}];
+  } else {
+    ciImage = [CIImage imageWithCVPixelBuffer:pixelBuffer];
+  }
   if (!ciImage) return;
 
   BOOL isFrontOutput = (output == self.frontVideoDataOutput);
