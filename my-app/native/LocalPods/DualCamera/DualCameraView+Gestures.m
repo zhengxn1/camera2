@@ -3,41 +3,50 @@
 
 @implementation DualCameraView (Gestures)
 
+- (UIView *)pipPreviewView {
+  return self.pipMainIsBack ? self.frontPreviewView : self.backPreviewView;
+}
+
 - (void)setupPipGestures {
+  UIView *pipView = [self pipPreviewView];
+
   if (self.pipPanGesture) {
-    if (self.pipPanGesture.view != self.frontPreviewView) {
+    // Re-attach to whichever view is currently the PIP.
+    if (self.pipPanGesture.view != pipView) {
       [self.pipPanGesture.view removeGestureRecognizer:self.pipPanGesture];
       [self.pipPinchGesture.view removeGestureRecognizer:self.pipPinchGesture];
-      [self.frontPreviewView addGestureRecognizer:self.pipPanGesture];
-      [self.frontPreviewView addGestureRecognizer:self.pipPinchGesture];
+      [pipView addGestureRecognizer:self.pipPanGesture];
+      [pipView addGestureRecognizer:self.pipPinchGesture];
     }
+    self.pipPanGesture.enabled = YES;
+    self.pipPinchGesture.enabled = YES;
+    pipView.userInteractionEnabled = YES;
     return;
   }
 
   self.pipPanGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePipPan:)];
   self.pipPanGesture.delegate = self;
-  self.pipPanGesture.enabled = self.pipMainIsBack;
-  [self.frontPreviewView addGestureRecognizer:self.pipPanGesture];
-  self.frontPreviewView.userInteractionEnabled = YES;
+  [pipView addGestureRecognizer:self.pipPanGesture];
+  pipView.userInteractionEnabled = YES;
 
   self.pipPinchGesture = [[UIPinchGestureRecognizer alloc] initWithTarget:self action:@selector(handlePipPinch:)];
   self.pipPinchGesture.delegate = self;
-  self.pipPinchGesture.enabled = self.pipMainIsBack;
-  [self.frontPreviewView addGestureRecognizer:self.pipPinchGesture];
+  [pipView addGestureRecognizer:self.pipPinchGesture];
 }
 
 - (void)handlePipPan:(UIPanGestureRecognizer *)pan {
+  UIView *pipView = [self pipPreviewView];
   CGPoint translation = [pan translationInView:self];
-  CGPoint center = self.frontPreviewView.center;
+  CGPoint center = pipView.center;
   center.x += translation.x;
   center.y += translation.y;
 
-  CGFloat halfW = self.frontPreviewView.bounds.size.width / 2;
-  CGFloat halfH = self.frontPreviewView.bounds.size.height / 2;
+  CGFloat halfW = pipView.bounds.size.width / 2;
+  CGFloat halfH = pipView.bounds.size.height / 2;
   center.x = MAX(halfW, MIN(self.bounds.size.width - halfW, center.x));
   center.y = MAX(halfH, MIN(self.bounds.size.height - halfH, center.y));
 
-  self.frontPreviewView.center = center;
+  pipView.center = center;
   [pan setTranslation:CGPointZero inView:self];
 
   self.pipPositionX = center.x / self.bounds.size.width;

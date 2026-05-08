@@ -186,6 +186,12 @@
     self.backPreviewView.frame = backFrame;
     self.frontPreviewView.frame = frontFrame;
 
+    // Always keep the PIP view on top regardless of which camera is in PIP,
+    // and ensure the pan/pinch gestures are attached to the correct view.
+    UIView *pipView = self.pipMainIsBack ? self.frontPreviewView : self.backPreviewView;
+    [self bringSubviewToFront:pipView];
+    [self setupPipGestures];
+
     CGFloat pipW = canvas.size.width;
     CGFloat pipS = pipW * MAX(0.05, MIN(0.5, self.pipSize));
     CGFloat pipCX = pipW * MAX(0, MIN(1, self.pipPositionX));
