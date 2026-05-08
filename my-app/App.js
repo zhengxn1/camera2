@@ -11,7 +11,6 @@ import {
   requireNativeComponent,
   StyleSheet,
   Text,
-  useWindowDimensions,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -68,7 +67,8 @@ if (DualCameraEventEmitter) {
 
 export default function App() {
   const [cameraMode, setCameraMode] = useState(CAMERA_MODE.BACK);
-  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const [screenWidth, setScreenWidth] = useState(0);
+  const [screenHeight, setScreenHeight] = useState(0);
   const [captureMode, setCaptureMode] = useState('picture');
   const [saving, setSaving] = useState(false);
   const [recordingStarting, setRecordingStarting] = useState(false);
@@ -339,7 +339,14 @@ export default function App() {
   }
 
   return (
-    <View style={styles.root}>
+    <View
+      style={styles.root}
+      onLayout={e => {
+        const { width, height } = e.nativeEvent.layout;
+        setScreenWidth(width);
+        setScreenHeight(height);
+      }}
+    >
       {NativeDualCameraView ? (
         <NativeDualCameraView
           style={styles.nativeCamera}
@@ -382,7 +389,7 @@ export default function App() {
         disabled={interactionDisabled || saving}
       />
 
-      {!interactionDisabled ? (
+      {!interactionDisabled && screenWidth > 0 ? (
         <CameraControlsOverlay
           cameraMode={cameraMode}
           isFlipped={isFlipped}
@@ -593,17 +600,27 @@ function CameraControlsOverlay({
 
   const mainCamera = isFlipped ? 'front' : 'back';
   const pipCamera = isFlipped ? 'back' : 'front';
-  const pipW = pipSize * screenWidth;
-  const pipH = pipSize * screenHeight;
-  const pipLeft = clamp(pipPosition.x * screenWidth - pipW / 2 + 8, 8, screenWidth - pipW + 8);
-  const pipTop = clamp(pipPosition.y * screenHeight + pipH / 2 - 54, INTERACTION_TOP, screenHeight - 132);
+
+  // PIP is a square whose side = pipSize * screenWidth (mirrors native updateLayout).
+  const pipSizePx = pipSize * screenWidth;
+  const pipBtnWidth = Math.max(92, pipSizePx - 16);
+
+  // pipPosition.{x,y} are fractions of the native view bounds (updated by pan gesture)
+  // and match screenWidth/screenHeight after the first drag.  Initially they are
+  // canvas-relative, but for portrait 9:16 the horizontal offset is zero and the
+  // vertical error is small — both are corrected by using the measured layout size
+  // from onLayout instead of useWindowDimensions().
+  const pipCenterX = pipPosition.x * screenWidth;
+  const pipCenterY = pipPosition.y * screenHeight;
+  const pipLeft = clamp(pipCenterX - pipBtnWidth / 2, 8, screenWidth - pipBtnWidth - 8);
+  const pipTop = clamp(pipCenterY + pipSizePx / 2 + 4, INTERACTION_TOP, screenHeight - 132);
 
   return (
     <>
       <ZoomDialOverlay positionStyle={styles.singleZoomPosition}>
         <ZoomDial camera={mainCamera} currentZoom={mainCamera === 'back' ? backZoom : frontZoom} onZoomChange={onZoomChange} />
       </ZoomDialOverlay>
-      <ZoomDialOverlay positionStyle={[styles.pipZoomPosition, { left: pipLeft, top: pipTop, width: Math.max(92, pipW - 16) }]}>
+      <ZoomDialOverlay positionStyle={[styles.pipZoomPosition, { left: pipLeft, top: pipTop, width: pipBtnWidth }]}>
         <ZoomDial camera={pipCamera} currentZoom={pipCamera === 'back' ? backZoom : frontZoom} onZoomChange={onZoomChange} compact />
       </ZoomDialOverlay>
     </>
