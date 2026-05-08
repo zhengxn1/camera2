@@ -153,38 +153,38 @@
   CGRect backFrame = CGRectOffset(backRect, ox, oy);
   CGRect frontFrame = CGRectOffset(frontRect, ox, oy);
 
-  _frontPreviewView.layer.masksToBounds = YES;
-  _backPreviewView.layer.masksToBounds = YES;
-  _frontPreviewView.layer.cornerRadius = 0;
-  _backPreviewView.layer.cornerRadius = 0;
+  self.frontPreviewView.layer.masksToBounds = YES;
+  self.backPreviewView.layer.masksToBounds = YES;
+  self.frontPreviewView.layer.cornerRadius = 0;
+  self.backPreviewView.layer.cornerRadius = 0;
 
-  if ([_currentLayout isEqualToString:@"back"]) {
-    _frontPreviewView.hidden = YES;
-    _backPreviewView.hidden = NO;
-    _backPreviewView.frame = backFrame;
+  if ([self.currentLayout isEqualToString:@"back"]) {
+    self.frontPreviewView.hidden = YES;
+    self.backPreviewView.hidden = NO;
+    self.backPreviewView.frame = backFrame;
 
-  } else if ([_currentLayout isEqualToString:@"front"]) {
-    _backPreviewView.hidden = YES;
-    _frontPreviewView.hidden = NO;
-    _frontPreviewView.frame = frontFrame;
+  } else if ([self.currentLayout isEqualToString:@"front"]) {
+    self.backPreviewView.hidden = YES;
+    self.frontPreviewView.hidden = NO;
+    self.frontPreviewView.frame = frontFrame;
 
-  } else if ([_currentLayout isEqualToString:@"lr"]) {
-    _backPreviewView.hidden = NO;
-    _frontPreviewView.hidden = NO;
-    _backPreviewView.frame = backFrame;
-    _frontPreviewView.frame = frontFrame;
+  } else if ([self.currentLayout isEqualToString:@"lr"]) {
+    self.backPreviewView.hidden = NO;
+    self.frontPreviewView.hidden = NO;
+    self.backPreviewView.frame = backFrame;
+    self.frontPreviewView.frame = frontFrame;
 
-  } else if ([_currentLayout isEqualToString:@"sx"]) {
-    _backPreviewView.hidden = NO;
-    _frontPreviewView.hidden = NO;
-    _backPreviewView.frame = backFrame;
-    _frontPreviewView.frame = frontFrame;
+  } else if ([self.currentLayout isEqualToString:@"sx"]) {
+    self.backPreviewView.hidden = NO;
+    self.frontPreviewView.hidden = NO;
+    self.backPreviewView.frame = backFrame;
+    self.frontPreviewView.frame = frontFrame;
 
-  } else if ([_currentLayout isEqualToString:@"pip_square"] || [_currentLayout isEqualToString:@"pip_circle"]) {
-    _backPreviewView.hidden = NO;
-    _frontPreviewView.hidden = NO;
-    _backPreviewView.frame = backFrame;
-    _frontPreviewView.frame = frontFrame;
+  } else if ([self.currentLayout isEqualToString:@"pip_square"] || [self.currentLayout isEqualToString:@"pip_circle"]) {
+    self.backPreviewView.hidden = NO;
+    self.frontPreviewView.hidden = NO;
+    self.backPreviewView.frame = backFrame;
+    self.frontPreviewView.frame = frontFrame;
 
     CGFloat pipW = canvas.size.width;
     CGFloat pipS = pipW * MAX(0.05, MIN(0.5, self.pipSize));
@@ -194,48 +194,48 @@
     pipCY = MAX(pipS / 2, MIN(canvas.size.height - pipS / 2, pipCY));
     CGRect pipRect = CGRectMake(pipCX - pipS / 2, pipCY - pipS / 2, pipS, pipS);
 
-    if ([_currentLayout isEqualToString:@"pip_circle"]) {
+    if ([self.currentLayout isEqualToString:@"pip_circle"]) {
       CGFloat radius = pipRect.size.width / 2;
       if (self.pipMainIsBack) {
-        _frontPreviewView.layer.cornerRadius = radius;
+        self.frontPreviewView.layer.cornerRadius = radius;
       } else {
-        _backPreviewView.layer.cornerRadius = radius;
+        self.backPreviewView.layer.cornerRadius = radius;
       }
     } else {
-      _frontPreviewView.layer.cornerRadius = 8;
-      _backPreviewView.layer.cornerRadius = 8;
+      self.frontPreviewView.layer.cornerRadius = 8;
+      self.backPreviewView.layer.cornerRadius = 8;
     }
 
   } else {
-    _frontPreviewView.hidden = YES;
-    _backPreviewView.hidden = NO;
-    _backPreviewView.frame = canvas;
+    self.frontPreviewView.hidden = YES;
+    self.backPreviewView.hidden = NO;
+    self.backPreviewView.frame = canvas;
   }
 
-  if (_frontPreviewLayer) _frontPreviewLayer.frame = _frontPreviewView.bounds;
-  if (_backPreviewLayer) _backPreviewLayer.frame = _backPreviewView.bounds;
-  if (_singlePreviewLayer) _singlePreviewLayer.frame = [self targetPreviewViewForPosition:self.singleCameraPosition].bounds;
+  if (self.frontPreviewLayer) self.frontPreviewLayer.frame = self.frontPreviewView.bounds;
+  if (self.backPreviewLayer) self.backPreviewLayer.frame = self.backPreviewView.bounds;
+  if (self.singlePreviewLayer) self.singlePreviewLayer.frame = [self targetPreviewViewForPosition:self.singleCameraPosition].bounds;
 }
 
 #pragma mark - Preview view / layer management
 
 - (void)createPlaceholderViews {
-  [_frontPreviewView removeFromSuperview];
-  [_backPreviewView removeFromSuperview];
+  [self.frontPreviewView removeFromSuperview];
+  [self.backPreviewView removeFromSuperview];
 
   UIView *bv = [[UIView alloc] init];
   bv.backgroundColor = [UIColor blackColor];
   bv.clipsToBounds = YES;
   bv.frame = self.bounds;
   [self addSubview:bv];
-  _backPreviewView = bv;
+  self.backPreviewView = bv;
 
   UIView *fv = [[UIView alloc] init];
   fv.backgroundColor = [UIColor blackColor];
   fv.clipsToBounds = YES;
   fv.frame = self.bounds;
   [self addSubview:fv];
-  _frontPreviewView = fv;
+  self.frontPreviewView = fv;
 
   [self setupPipGestures];
 

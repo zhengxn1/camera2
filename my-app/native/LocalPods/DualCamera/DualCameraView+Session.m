@@ -343,9 +343,9 @@
       device.exposureMode = AVCaptureExposureModeContinuousAutoExposure;
     }
     if (position == AVCaptureDevicePositionBack) {
-      device.videoZoomFactor = _backZoomFactor;
+      device.videoZoomFactor = self.backZoomFactor;
     } else {
-      device.videoZoomFactor = _frontZoomFactor;
+      device.videoZoomFactor = self.frontZoomFactor;
     }
     [device unlockForConfiguration];
   }
@@ -438,7 +438,7 @@
 #pragma mark - Zoom
 
 - (void)dc_setFrontZoom:(CGFloat)factor {
-  _frontZoomFactor = factor;
+  self.frontZoomFactor = factor;
   dispatch_async(self.sessionQueue, ^{
     AVCaptureDevice *frontDevice = [self cameraDeviceForPosition:AVCaptureDevicePositionFront];
     if (!frontDevice) return;
@@ -457,7 +457,7 @@
 }
 
 - (void)dc_setBackZoom:(CGFloat)factor {
-  _backZoomFactor = factor;
+  self.backZoomFactor = factor;
   dispatch_async(self.sessionQueue, ^{
     AVCaptureDevice *backDevice = [self cameraDeviceForPosition:AVCaptureDevicePositionBack];
     if (!backDevice) return;
@@ -506,7 +506,7 @@
   device.activeVideoMinFrameDuration = CMTimeMake(1, 30);
   device.activeVideoMaxFrameDuration = CMTimeMake(1, 30);
 
-  CGFloat zoomFactor = (device.position == AVCaptureDevicePositionBack) ? _backZoomFactor : _frontZoomFactor;
+  CGFloat zoomFactor = (device.position == AVCaptureDevicePositionBack) ? self.backZoomFactor : self.frontZoomFactor;
   CGFloat clampedZoom = zoomFactor;
   if (clampedZoom < device.minAvailableVideoZoomFactor) {
     clampedZoom = device.minAvailableVideoZoomFactor;

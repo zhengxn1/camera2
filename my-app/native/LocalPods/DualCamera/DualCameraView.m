@@ -52,7 +52,6 @@
   _realtimeOutputSize = CGSizeZero;
   _lastRealtimeVideoPTS = kCMTimeInvalid;
   _hasLastRealtimeVideoPTS = NO;
-  _backZoomFactor = 1.0;
   _canvasSizeAtRecording = CGSizeZero;
   _sxBackOnTop = YES;    // SX: default back on top
   _pipMainIsBack = YES;  // PiP: default back is main (full-screen)
