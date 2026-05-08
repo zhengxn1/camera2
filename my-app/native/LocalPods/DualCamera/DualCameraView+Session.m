@@ -657,12 +657,28 @@
 }
 
 - (void)sessionWasInterrupted:(NSNotification *)notification {
-  NSNumber *reason = notification.userInfo[AVCaptureSessionInterruptionReasonKey];
-  NSString *message = reason ? [NSString stringWithFormat:@"Camera session was interrupted. reason=%@", reason] : @"Camera session was interrupted.";
+  NSNumber *reasonNumber = notification.userInfo[AVCaptureSessionInterruptionReasonKey];
+  AVCaptureSessionInterruptionReason reason = (AVCaptureSessionInterruptionReason)reasonNumber.integerValue;
+
+  // Background / multitasking interruptions are normal OS behaviour — mark as not
+  // running so resumeIfNeeded can restart the session when the app returns, but do
+  // NOT surface an error to the user.
+  if (reason == AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableInBackground ||
+      reason == AVCaptureSessionInterruptionReasonVideoDeviceNotAvailableWithMultipleForegroundApps) {
+    NSLog(@"[DualCamera] Session interrupted (reason=%ld), will resume on foreground.", (long)reason);
+    self.isRunning = NO;
+    return;
+  }
+
+  NSString *message = reasonNumber
+    ? [NSString stringWithFormat:@"Camera session was interrupted. reason=%@", reasonNumber]
+    : @"Camera session was interrupted.";
   [self emitSessionError:message code:@"session_interrupted"];
 }
 
 - (void)sessionInterruptionEnded:(NSNotification *)notification {
+  // isRunning was cleared in sessionWasInterrupted for background-type interruptions,
+  // so resumeIfNeeded will call startRunning and bring the session back.
   [self startOnSessionQueue];
 }
 
