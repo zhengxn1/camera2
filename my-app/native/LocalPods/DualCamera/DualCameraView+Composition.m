@@ -84,13 +84,22 @@
   return [placed imageByCroppingToRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];
 }
 
+/// Convert a UIKit rect (Y=0 at top) to CIImage rect (Y=0 at bottom) for a given canvas height.
+- (CGRect)ciRectFromUIKitRect:(CGRect)rect canvasHeight:(CGFloat)h {
+  return CGRectMake(rect.origin.x, h - rect.origin.y - rect.size.height, rect.size.width, rect.size.height);
+}
+
 - (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
                                      front:(CIImage *)front
                                       back:(CIImage *)back {
   CGSize canvasSize = state.outputSize;
   NSDictionary<NSString *, NSValue *> *rects = [self rectsForLayoutState:state canvasSize:canvasSize];
-  CGRect backRect = [rects[@"back"] CGRectValue];
-  CGRect frontRect = [rects[@"front"] CGRectValue];
+
+  // rectsForLayoutState returns UIKit coordinates (Y=0 at top).
+  // CIImage uses Y=0 at bottom, so flip each rect before compositing.
+  CGFloat H = canvasSize.height;
+  CGRect backRect  = [self ciRectFromUIKitRect:[rects[@"back"]  CGRectValue] canvasHeight:H];
+  CGRect frontRect = [self ciRectFromUIKitRect:[rects[@"front"] CGRectValue] canvasHeight:H];
   NSString *layout = state.layoutMode ?: @"back";
 
   if ([layout isEqualToString:@"back"] && !back) {
