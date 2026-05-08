@@ -239,7 +239,7 @@
   // iOS 16+: prioritize quality over speed and use the output's max dimensions.
   if (@available(iOS 16.0, *)) {
     settings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
-    if (CMVideoDimensionsAreEqual(settings.maxPhotoDimensions, (CMVideoDimensions){0, 0})) {
+    if (settings.maxPhotoDimensions.width == 0 && settings.maxPhotoDimensions.height == 0) {
       settings.maxPhotoDimensions = output.maxPhotoDimensions;
     }
   } else if (@available(iOS 13.0, *)) {
