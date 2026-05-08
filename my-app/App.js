@@ -66,7 +66,7 @@ if (DualCameraEventEmitter) {
 }
 
 export default function App() {
-  const [cameraMode, setCameraMode] = useState(CAMERA_MODE.BACK);
+  const [cameraMode, setCameraMode] = useState(CAMERA_MODE.SX);
   const [screenWidth, setScreenWidth] = useState(0);
   const [screenHeight, setScreenHeight] = useState(0);
   const [captureMode, setCaptureMode] = useState('picture');
