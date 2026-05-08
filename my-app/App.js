@@ -512,20 +512,25 @@ function CameraControlsOverlay({
   if (cameraMode === CAMERA_MODE.LR) {
     const firstCamera = isFlipped ? 'front' : 'back';
     const secondCamera = isFlipped ? 'back' : 'front';
+    // Usable pixel width inside each column (8px padding each side)
+    const leftW = screenWidth * dualLayoutRatio - 16;
+    const rightW = screenWidth * (1 - dualLayoutRatio) - 16;
     return (
       <>
-        <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: screenWidth * dualLayoutRatio - 16 }]}>
+        <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: leftW + 16 }]}>
           <ZoomDial
             camera={firstCamera}
             currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
             onZoomChange={onZoomChange}
+            availableWidth={leftW}
           />
         </ZoomDialOverlay>
-        <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: screenWidth * (1 - dualLayoutRatio) - 16 }]}>
+        <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: rightW + 16 }]}>
           <ZoomDial
             camera={secondCamera}
             currentZoom={secondCamera === 'back' ? backZoom : frontZoom}
             onZoomChange={onZoomChange}
+            availableWidth={rightW}
           />
         </ZoomDialOverlay>
         <AreaDivider
@@ -544,20 +549,24 @@ function CameraControlsOverlay({
     const secondCamera = isFlipped ? 'back' : 'front';
     const isLandscape = screenWidth > screenHeight;
     if (isLandscape) {
+      const leftW = screenWidth * dualLayoutRatio - 16;
+      const rightW = screenWidth * (1 - dualLayoutRatio) - 16;
       return (
         <>
-          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: screenWidth * dualLayoutRatio - 16 }]}>
+          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: leftW + 16 }]}>
             <ZoomDial
               camera={firstCamera}
               currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
               onZoomChange={onZoomChange}
+              availableWidth={leftW}
             />
           </ZoomDialOverlay>
-          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: screenWidth * (1 - dualLayoutRatio) - 16 }]}>
+          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: rightW + 16 }]}>
             <ZoomDial
               camera={secondCamera}
               currentZoom={secondCamera === 'back' ? backZoom : frontZoom}
               onZoomChange={onZoomChange}
+              availableWidth={rightW}
             />
           </ZoomDialOverlay>
           <AreaDivider
@@ -571,9 +580,12 @@ function CameraControlsOverlay({
       );
     }
 
+    // Portrait: zoom for top section sits near the divider; clamp so it never
+    // overlaps the status bar area at the top of the screen.
+    const sxTopZoomY = Math.max(INTERACTION_TOP, screenHeight * dualLayoutRatio - 96);
     return (
       <>
-        <ZoomDialOverlay positionStyle={[styles.sxTopZoomPosition, { top: screenHeight * dualLayoutRatio - 96 }]}>
+        <ZoomDialOverlay positionStyle={[styles.sxTopZoomPosition, { top: sxTopZoomY }]}>
           <ZoomDial
             camera={firstCamera}
             currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
@@ -598,18 +610,13 @@ function CameraControlsOverlay({
     );
   }
 
+  // PIP modes
   const mainCamera = isFlipped ? 'front' : 'back';
   const pipCamera = isFlipped ? 'back' : 'front';
-
   // PIP is a square whose side = pipSize * screenWidth (mirrors native updateLayout).
   const pipSizePx = pipSize * screenWidth;
   const pipBtnWidth = Math.max(92, pipSizePx - 16);
-
-  // pipPosition.{x,y} are fractions of the native view bounds (updated by pan gesture)
-  // and match screenWidth/screenHeight after the first drag.  Initially they are
-  // canvas-relative, but for portrait 9:16 the horizontal offset is zero and the
-  // vertical error is small — both are corrected by using the measured layout size
-  // from onLayout instead of useWindowDimensions().
+  // pipPosition.{x,y} are fractions of the native view bounds (updated by pan gesture).
   const pipCenterX = pipPosition.x * screenWidth;
   const pipCenterY = pipPosition.y * screenHeight;
   const pipLeft = clamp(pipCenterX - pipBtnWidth / 2, 8, screenWidth - pipBtnWidth - 8);
@@ -621,7 +628,12 @@ function CameraControlsOverlay({
         <ZoomDial camera={mainCamera} currentZoom={mainCamera === 'back' ? backZoom : frontZoom} onZoomChange={onZoomChange} />
       </ZoomDialOverlay>
       <ZoomDialOverlay positionStyle={[styles.pipZoomPosition, { left: pipLeft, top: pipTop, width: pipBtnWidth }]}>
-        <ZoomDial camera={pipCamera} currentZoom={pipCamera === 'back' ? backZoom : frontZoom} onZoomChange={onZoomChange} compact />
+        <ZoomDial
+          camera={pipCamera}
+          currentZoom={pipCamera === 'back' ? backZoom : frontZoom}
+          onZoomChange={onZoomChange}
+          availableWidth={pipBtnWidth}
+        />
       </ZoomDialOverlay>
     </>
   );
@@ -691,22 +703,41 @@ function AreaDivider({ mode, ratio, onRatioChange, screenWidth, screenHeight }) 
   );
 }
 
-function ZoomDial({ camera, currentZoom, onZoomChange, compact = false }) {
+/**
+ * Adaptive zoom control.
+ *
+ * Display modes chosen from availableWidth (px):
+ *   normal  — full-size 36 px buttons (default when no constraint)
+ *   compact — small 28 px buttons (medium columns / PIP overlay)
+ *   mini    — single badge showing current zoom; tap cycles presets (very narrow columns)
+ *   hidden  — nothing rendered (< 44 px)
+ */
+function ZoomDial({ camera, currentZoom, onZoomChange, availableWidth = Infinity }) {
   const [expanded, setExpanded] = useState(false);
   const latestZoomRef = useRef(currentZoom);
   const startZoomRef = useRef(currentZoom);
   const levels = camera === 'back' ? BACK_ZOOM_LEVELS : FRONT_ZOOM_LEVELS;
   const min = camera === 'back' ? 0.5 : 1;
   const max = camera === 'back' ? 5 : 2;
-  const sliderWidth = compact ? 116 : 180;
   latestZoomRef.current = currentZoom;
+
+  // Pixel width required for each mode's button row (buttons + gaps + horizontal padding).
+  const n = levels.length;
+  const normalMinW  = n * 36 + (n - 1) * 6 + 16;  // e.g. back=220, front=94
+  const compactMinW = n * 28 + (n - 1) * 4 + 10;  // e.g. back=166, front=74
+
+  const mode =
+    availableWidth >= normalMinW  ? 'normal'  :
+    availableWidth >= compactMinW ? 'compact' :
+    availableWidth >= 44          ? 'mini'    : 'hidden';
+
+  const isCompact = mode === 'compact';
+  const sliderWidth = isCompact ? 116 : 180;
 
   const sliderPanResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onPanResponderGrant: () => {
-      startZoomRef.current = latestZoomRef.current;
-    },
+    onPanResponderGrant: () => { startZoomRef.current = latestZoomRef.current; },
     onPanResponderMove: (_, gesture) => {
       const range = max - min;
       onZoomChange(camera, startZoomRef.current + (gesture.dx / sliderWidth) * range);
@@ -715,8 +746,30 @@ function ZoomDial({ camera, currentZoom, onZoomChange, compact = false }) {
     onPanResponderTerminate: () => setExpanded(false),
   })).current;
 
+  if (mode === 'hidden') return null;
+
+  // Mini mode: single badge, tap cycles to next preset level.
+  if (mode === 'mini') {
+    const nearest = levels.reduce((b, l) =>
+      Math.abs(l - currentZoom) < Math.abs(b - currentZoom) ? l : b, levels[0]);
+    const nextLevel = levels[(levels.indexOf(nearest) + 1) % levels.length];
+    const label = currentZoom < 1
+      ? currentZoom.toFixed(1)
+      : String(+(currentZoom.toFixed(1))).replace(/\.0$/, '');
+    return (
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`${camera} ${label}x zoom`}
+        style={styles.zoomMiniBadge}
+        onPress={() => onZoomChange(camera, nextLevel)}
+      >
+        <Text style={styles.zoomMiniBadgeText}>{label}x</Text>
+      </Pressable>
+    );
+  }
+
   return (
-    <View style={[styles.zoomDial, compact && styles.zoomDialCompact]}>
+    <View style={[styles.zoomDial, isCompact && styles.zoomDialCompact]}>
       <View style={styles.zoomPresetRow}>
         {levels.map(level => {
           const active = Math.abs(currentZoom - level) < 0.05;
@@ -725,12 +778,12 @@ function ZoomDial({ camera, currentZoom, onZoomChange, compact = false }) {
               key={level}
               accessibilityRole="button"
               accessibilityLabel={`${camera} ${level}x zoom`}
-              style={[styles.zoomPreset, compact && styles.zoomPresetCompact, active && styles.zoomPresetActive]}
+              style={[styles.zoomPreset, isCompact && styles.zoomPresetCompact, active && styles.zoomPresetActive]}
               onPress={() => onZoomChange(camera, level)}
               onLongPress={() => setExpanded(true)}
               delayLongPress={260}
             >
-              <Text style={[styles.zoomPresetText, compact && styles.zoomPresetTextCompact, active && styles.zoomPresetTextActive]}>
+              <Text style={[styles.zoomPresetText, isCompact && styles.zoomPresetTextCompact, active && styles.zoomPresetTextActive]}>
                 {level}x
               </Text>
             </Pressable>
@@ -740,12 +793,7 @@ function ZoomDial({ camera, currentZoom, onZoomChange, compact = false }) {
       {expanded ? (
         <View style={[styles.zoomSlider, { width: sliderWidth }]} {...sliderPanResponder.panHandlers}>
           <View style={styles.zoomSliderTrack}>
-            <View
-              style={[
-                styles.zoomSliderFill,
-                { width: `${((currentZoom - min) / (max - min)) * 100}%` },
-              ]}
-            />
+            <View style={[styles.zoomSliderFill, { width: `${((currentZoom - min) / (max - min)) * 100}%` }]} />
           </View>
           <Text style={styles.zoomSliderValue}>{currentZoom.toFixed(1)}x</Text>
         </View>
@@ -1140,6 +1188,17 @@ const styles = StyleSheet.create({
   zoomPresetActive: { backgroundColor: ZOOM_ACTIVE, borderColor: ZOOM_ACTIVE },
   zoomPresetText: { color: '#fff', fontSize: 12, fontWeight: '800' },
   zoomPresetTextCompact: { fontSize: 10 },
+  zoomMiniBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomMiniBadgeText: { color: '#fff', fontSize: 11, fontWeight: '800' },
   zoomPresetTextActive: { color: '#000' },
   zoomSlider: {
     marginTop: 8,
@@ -1196,7 +1255,6 @@ const styles = StyleSheet.create({
     right: 0,
     height: 1,
     alignItems: 'center',
-    justifyContent: 'center',
   },
   dividerLineHorizontal: {
     position: 'absolute',
@@ -1206,7 +1264,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
   dividerHitHorizontal: {
+    // Mirror the vertical handle: center the 56px hit area on the 1px line.
+    // left: '50%' + marginLeft: -32 → horizontal center
+    // top: -27 ≈ -(hitHeight/2 - lineHeight/2) = -(56/2 - 1/2) → vertical center on line
     position: 'absolute',
+    left: '50%',
+    marginLeft: -32,
+    top: -27,
     width: 64,
     height: 56,
     alignItems: 'center',
