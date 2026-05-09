@@ -16,7 +16,7 @@
       if (!self.isConfigured) return;
 
       if (self.usingMultiCam && [self isDualLayout:self.currentLayout]) {
-        [self triggerMulticamDualPhotoCaptureWithCanvasSize:canvasSizeForPhoto];
+        [self captureWysiwygDualPhotoWithCanvasSize:canvasSizeForPhoto];
       } else {
         AVCapturePhotoOutput *output = [self photoOutputForCurrentLayout];
         if (!output) {
@@ -28,6 +28,7 @@
         @try {
           AVCapturePhotoSettings *settings = [AVCapturePhotoSettings photoSettings];
           settings.flashMode = AVCaptureFlashModeOff;
+          [self applyHighQualityPhotoSettings:settings forOutput:output];
           [output capturePhotoWithSettings:settings delegate:self];
         } @catch (NSException *exception) {
           NSLog(@"[DualCamera] internalTakePhoto exception: %@", exception);
@@ -40,187 +41,40 @@
   });
 }
 
-#pragma mark - Multicam dual-photo capture
+#pragma mark - Multicam WYSIWYG photo capture
 
-// Triggers both front and back AVCapturePhotoOutputs in parallel.  Each
-// callback lands in captureOutput:didFinishProcessingPhoto: which routes to
-// handleDualPhotoOutput:photo:error:.  When both photos arrive, composite +
-// save runs on a background queue.
-- (void)triggerMulticamDualPhotoCaptureWithCanvasSize:(CGSize)canvasSize {
-  if (self.pendingPhotoCaptureInFlight) {
-    NSLog(@"[DualCamera] triggerMulticamDualPhotoCapture — capture already in flight, ignoring");
-    return;
+// Saves the same composited camera frames used by realtime recording. This keeps
+// stills aligned with preview/recording and avoids MultiCam PhotoOutput races.
+- (void)captureWysiwygDualPhotoWithCanvasSize:(CGSize)canvasSize {
+  CIImage *frontFrame = nil;
+  CIImage *backFrame = nil;
+  @synchronized(self) {
+    frontFrame = self.latestFrontFrame;
+    backFrame = self.latestBackFrame;
   }
-  if (!self.frontPhotoOutput || !self.backPhotoOutput) {
+
+  if (!frontFrame || !backFrame) {
     dispatch_async(dispatch_get_main_queue(), ^{
-      [self emitError:@"Photo outputs not configured"];
+      [self emitError:@"Camera not ready, please try again"];
     });
     return;
   }
 
-  CGFloat refW = MIN(canvasSize.width, canvasSize.height) * 3.0;
   DualCameraDeviceOrientation photoOrientation = self.deviceOrientation;
   CGSize saveCanvas = [self outputSizeForAspectRatio:self.saveAspectRatio ?: @"9:16"
-                                       referenceWidth:refW
+                                       referenceWidth:1440.0
                                             landscape:[self isDeviceOrientationLandscape:photoOrientation]];
   DualCameraLayoutState *photoState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                   outputSize:saveCanvas
                                                                  orientation:photoOrientation];
 
-  self.pendingPhotoFrontImage = nil;
-  self.pendingPhotoBackImage = nil;
-  self.pendingPhotoFrontReceived = NO;
-  self.pendingPhotoBackReceived = NO;
-  self.pendingPhotoFrontOrientation = kCGImagePropertyOrientationUp;
-  self.pendingPhotoBackOrientation = kCGImagePropertyOrientationUp;
-  self.pendingPhotoCanvasSize = saveCanvas;
-  self.pendingPhotoLayoutState = photoState;
-  self.pendingPhotoCaptureInFlight = YES;
-
-  AVCapturePhotoSettings *backSettings = [AVCapturePhotoSettings photoSettings];
-  backSettings.flashMode = AVCaptureFlashModeOff;
-  [self applyHighQualityPhotoSettings:backSettings forOutput:self.backPhotoOutput];
-
-  AVCapturePhotoSettings *frontSettings = [AVCapturePhotoSettings photoSettings];
-  frontSettings.flashMode = AVCaptureFlashModeOff;
-  [self applyHighQualityPhotoSettings:frontSettings forOutput:self.frontPhotoOutput];
-
-  NSLog(@"[DualCamera] triggerMulticamDualPhotoCapture — orientation=%ld saveCanvas=%@",
-        (long)photoOrientation, NSStringFromCGSize(saveCanvas));
-
-  @try {
-    [self.backPhotoOutput capturePhotoWithSettings:backSettings delegate:self];
-    [self.frontPhotoOutput capturePhotoWithSettings:frontSettings delegate:self];
-  } @catch (NSException *exception) {
-    self.pendingPhotoCaptureInFlight = NO;
-    NSLog(@"[DualCamera] dual-photo capture exception: %@", exception);
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self emitError:[NSString stringWithFormat:@"Photo capture failed: %@", exception.reason ?: @"Unknown error"]];
-    });
-  }
-}
-
-- (void)handleDualPhotoOutput:(AVCaptureOutput *)output
-                         photo:(AVCapturePhoto *)photo
-                         error:(NSError *)error {
-  BOOL isFront = (output == self.frontPhotoOutput);
-  BOOL isBack = (output == self.backPhotoOutput);
-  if (!isFront && !isBack) return;
-
-  if (error) {
-    self.pendingPhotoCaptureInFlight = NO;
-    [self resetPendingDualPhotoState];
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self emitError:error.localizedDescription ?: @"Dual photo capture failed"];
-    });
-    return;
-  }
-
-  CIImage *image = [self ciImageFromCapturedPhoto:photo];
-  if (!image) {
-    self.pendingPhotoCaptureInFlight = NO;
-    [self resetPendingDualPhotoState];
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self emitError:@"Failed to decode captured photo"];
-    });
-    return;
-  }
-
-  AVCaptureDevicePosition position = isFront ? AVCaptureDevicePositionFront : AVCaptureDevicePositionBack;
-  CGImagePropertyOrientation exifOrientation = [self exifOrientationFromCapturedPhoto:photo
-                                                                              position:position];
-
-  if (isFront) {
-    self.pendingPhotoFrontImage = image;
-    self.pendingPhotoFrontOrientation = exifOrientation;
-    self.pendingPhotoFrontReceived = YES;
-  } else {
-    self.pendingPhotoBackImage = image;
-    self.pendingPhotoBackOrientation = exifOrientation;
-    self.pendingPhotoBackReceived = YES;
-  }
-
-  NSLog(@"[DualCamera] handleDualPhotoOutput — %@ received (size=%@ exif=%u). frontReady=%d backReady=%d",
-        isFront ? @"front" : @"back",
-        NSStringFromCGSize(image.extent.size), (unsigned)exifOrientation,
-        self.pendingPhotoFrontReceived, self.pendingPhotoBackReceived);
-
-  if (self.pendingPhotoFrontReceived && self.pendingPhotoBackReceived) {
-    [self compositeAndSavePendingDualPhoto];
-  }
-}
-
-- (CIImage *)ciImageFromCapturedPhoto:(AVCapturePhoto *)photo {
-  CVPixelBufferRef pixelBuffer = photo.pixelBuffer;
-  if (pixelBuffer) {
-    CGColorSpaceRef cs = CVImageBufferGetColorSpace(pixelBuffer);
-    if (cs) {
-      return [CIImage imageWithCVPixelBuffer:pixelBuffer
-                                     options:@{(id)kCIImageColorSpace: (__bridge id)cs}];
-    }
-    return [CIImage imageWithCVPixelBuffer:pixelBuffer];
-  }
-  // Fallback: decode JPEG/HEIC representation.
-  NSData *data = [photo fileDataRepresentation];
-  if (!data) return nil;
-  return [CIImage imageWithData:data];
-}
-
-- (CGImagePropertyOrientation)exifOrientationFromCapturedPhoto:(AVCapturePhoto *)photo
-                                                       position:(AVCaptureDevicePosition)position {
-  // AVCapturePhoto.metadata mirrors the CGImage TIFF dictionary; the top-level
-  // kCGImagePropertyOrientation is the authoritative orientation that should
-  // be applied to make the image upright.  When the AVCaptureConnection had
-  // videoOrientation set, this is usually kCGImagePropertyOrientationUp (the
-  // photo is already pre-rotated); otherwise it carries the sensor-native
-  // EXIF tag and tells us exactly how to rotate.
-  NSNumber *orientationNumber = photo.metadata[(NSString *)kCGImagePropertyOrientation];
-  if (orientationNumber) {
-    return (CGImagePropertyOrientation)orientationNumber.unsignedIntValue;
-  }
-  return [self exifOrientationForCameraPosition:position
-                              deviceOrientation:self.deviceOrientation];
-}
-
-- (void)compositeAndSavePendingDualPhoto {
-  CIImage *frontRaw = self.pendingPhotoFrontImage;
-  CIImage *backRaw = self.pendingPhotoBackImage;
-  CGImagePropertyOrientation frontExif = self.pendingPhotoFrontOrientation;
-  CGImagePropertyOrientation backExif = self.pendingPhotoBackOrientation;
-  CGSize saveCanvas = self.pendingPhotoCanvasSize;
-  DualCameraLayoutState *photoState = self.pendingPhotoLayoutState;
-
-  [self resetPendingDualPhotoState];
-
-  if (!frontRaw || !backRaw || !photoState) {
-    self.pendingPhotoCaptureInFlight = NO;
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [self emitError:@"Dual photo capture state lost"];
-    });
-    return;
-  }
-
-  dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+  dispatch_async(self.realtimeRenderQueue, ^{
     @autoreleasepool {
-      CIImage *frontUpright = [self imageByApplyingExifOrientation:frontExif toImage:frontRaw];
-      CIImage *backUpright = [self imageByApplyingExifOrientation:backExif toImage:backRaw];
-
-      // The mirroring flags inside the layout state reflect *output* mirroring
-      // for video data outputs.  AVCapturePhotoOutput doesn't pre-mirror, so
-      // for the photo path we treat both cameras as non-mirrored except where
-      // the user explicitly opts into a mirrored selfie via frontOutputMirrored.
-      photoState.frontMirrored = self.frontOutputMirrored;
-      photoState.backMirrored = self.backOutputMirrored;
-
       CIImage *composited = [self compositedImageForLayoutState:photoState
-                                                          front:frontUpright
-                                                           back:backUpright
+                                                          front:frontFrame
+                                                           back:backFrame
                                                     highQuality:YES];
-      NSLog(@"[DualCamera] compositeAndSavePendingDualPhoto — composited=%@ (expect %.0fx%.0f)",
-            NSStringFromCGRect(composited.extent), saveCanvas.width, saveCanvas.height);
-
       NSString *path = [self saveCIImageAsJPEG:composited];
-      self.pendingPhotoCaptureInFlight = NO;
       dispatch_async(dispatch_get_main_queue(), ^{
         if (path) {
           [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
@@ -230,39 +84,6 @@
       });
     }
   });
-}
-
-- (void)applyHighQualityPhotoSettings:(AVCapturePhotoSettings *)settings
-                             forOutput:(AVCapturePhotoOutput *)output {
-  if (!settings || !output) return;
-
-  // iOS 16+: prioritize quality over speed and use the output's max dimensions.
-  if (@available(iOS 16.0, *)) {
-    settings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
-    if (CMVideoDimensionsAreEqual(settings.maxPhotoDimensions, (CMVideoDimensions){0, 0})) {
-      settings.maxPhotoDimensions = output.maxPhotoDimensions;
-    }
-  } else if (@available(iOS 13.0, *)) {
-    settings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
-  }
-
-  // iOS < 16 high-resolution flag (deprecated in 16+, ignored without warning).
-  if (@available(iOS 16.0, *)) {
-    // no-op: maxPhotoDimensions covers it
-  } else {
-    if (output.isHighResolutionCaptureEnabled) {
-      settings.highResolutionPhotoEnabled = YES;
-    }
-  }
-}
-
-- (void)resetPendingDualPhotoState {
-  self.pendingPhotoFrontImage = nil;
-  self.pendingPhotoBackImage = nil;
-  self.pendingPhotoFrontReceived = NO;
-  self.pendingPhotoBackReceived = NO;
-  self.pendingPhotoLayoutState = nil;
-  self.pendingPhotoCanvasSize = CGSizeZero;
 }
 
 - (void)internalStartRecording {
@@ -303,7 +124,7 @@
     if (!self.isConfigured) return;
 
     if (self.usingMultiCam) {
-      dispatch_async(self.videoDataOutputQueue, ^{
+      dispatch_async(self.realtimeRenderQueue, ^{
         [self finishRealtimeRecording];
       });
     } else {
@@ -349,15 +170,6 @@
     didFinishProcessingPhoto:(AVCapturePhoto *)photo
                        error:(NSError *)error {
   @try {
-    // Multicam dual-photo path: route to the dual capture handler.  This runs
-    // when triggerMulticamDualPhotoCaptureWithCanvasSize: kicked off a parallel
-    // front+back capture; both photos are buffered and composited on arrival.
-    if (self.pendingPhotoCaptureInFlight &&
-        (output == self.frontPhotoOutput || output == self.backPhotoOutput)) {
-      [self handleDualPhotoOutput:output photo:photo error:error];
-      return;
-    }
-
     if (error) {
       [self emitError:error.localizedDescription];
       return;
@@ -473,7 +285,10 @@
   }
 
   if (self.isDualRecordingActive && isBackOutput) {
-    [self appendRealtimeVideoFrameAtTime:CMSampleBufferGetPresentationTimeStamp(sampleBuffer) source:@"back_clock"];
+    CMTime pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+    dispatch_async(self.realtimeRenderQueue, ^{
+      [self appendRealtimeVideoFrameAtTime:pts source:@"back_clock"];
+    });
   }
 }
 

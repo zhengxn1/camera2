@@ -20,7 +20,7 @@
 /// Start the underlying AVAssetWriter at the given sample timestamp (idempotent).
 - (BOOL)ensureRealtimeWriterStartedAtTime:(CMTime)time;
 
-/// Append one composited video frame. Called on videoDataOutputQueue.
+/// Append one composited video frame. Called on realtimeRenderQueue.
 - (void)appendRealtimeVideoFrameAtTime:(CMTime)time source:(NSString *)source;
 
 /// Append one audio sample buffer. Called on videoDataOutputQueue.

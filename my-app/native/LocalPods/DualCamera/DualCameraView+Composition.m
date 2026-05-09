@@ -57,35 +57,6 @@
   return result;
 }
 
-#pragma mark - EXIF orientation helpers
-
-- (CIImage *)imageByApplyingExifOrientation:(CGImagePropertyOrientation)orientation
-                                     toImage:(CIImage *)image {
-  if (!image) return nil;
-  if (orientation == kCGImagePropertyOrientationUp) return image;
-  return [image imageByApplyingOrientation:orientation];
-}
-
-// EXIF orientation table for AVCaptureVideoDataOutput buffers when the
-// connection's videoOrientation is left at the default (Portrait for back,
-// Portrait for front).  Front-facing sensors have an opposite native
-// orientation, so portrait/landscape mappings are flipped.
-- (CGImagePropertyOrientation)exifOrientationForCameraPosition:(AVCaptureDevicePosition)position
-                                              deviceOrientation:(NSInteger)deviceOrientation {
-  BOOL isFront = (position == AVCaptureDevicePositionFront);
-  switch ((DualCameraDeviceOrientation)deviceOrientation) {
-    case DualCameraDeviceOrientationPortrait:
-      return isFront ? kCGImagePropertyOrientationLeftMirrored : kCGImagePropertyOrientationRight;
-    case DualCameraDeviceOrientationPortraitUpsideDown:
-      return isFront ? kCGImagePropertyOrientationRightMirrored : kCGImagePropertyOrientationLeft;
-    case DualCameraDeviceOrientationLandscapeLeft:
-      return isFront ? kCGImagePropertyOrientationDownMirrored : kCGImagePropertyOrientationUp;
-    case DualCameraDeviceOrientationLandscapeRight:
-      return isFront ? kCGImagePropertyOrientationUpMirrored : kCGImagePropertyOrientationDown;
-  }
-  return kCGImagePropertyOrientationUp;
-}
-
 - (CIImage *)circleAlphaMaskForRect:(CGRect)rect canvasSize:(CGSize)canvasSize {
   CIFilter *radialGradient = [CIFilter filterWithName:@"CIRadialGradient"];
   CGPoint center = CGPointMake(CGRectGetMidX(rect), CGRectGetMidY(rect));
@@ -234,7 +205,7 @@
   BOOL ok = [self.ciContext writeJPEGRepresentationOfImage:toSave
                                                     toURL:fileURL
                                                colorSpace:srgb
-                                                  options:@{}
+                                                  options:@{(id)kCGImageDestinationLossyCompressionQuality: @0.95}
                                                     error:&writeError];
   CGColorSpaceRelease(srgb);
 

@@ -39,7 +39,14 @@
   _pendingDualPhotos = [NSMutableDictionary dictionary];
   _compositingQueue = dispatch_queue_create("com.zhengning.dualcamera.compositing", DISPATCH_QUEUE_SERIAL);
   _videoDataOutputQueue = dispatch_queue_create("com.zhengning.dualcamera.videodata", DISPATCH_QUEUE_SERIAL);
-  _ciContext = [CIContext contextWithOptions:@{kCIContextUseSoftwareRenderer: @NO}];
+  _realtimeRenderQueue = dispatch_queue_create("com.zhengning.dualcamera.realtime-render", DISPATCH_QUEUE_SERIAL);
+  CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  _ciContext = [CIContext contextWithOptions:@{
+    kCIContextUseSoftwareRenderer: @NO,
+    kCIContextWorkingColorSpace: (__bridge id)srgb,
+    kCIContextOutputColorSpace: (__bridge id)srgb
+  }];
+  CGColorSpaceRelease(srgb);
   // Default values for layout/PiP/zoom properties (declared in .h for React Native)
   _dualLayoutRatio = 0.5;
   _pipSize = 0.28;

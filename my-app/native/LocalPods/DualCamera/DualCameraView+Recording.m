@@ -30,8 +30,13 @@
     AVVideoCodecKey: AVVideoCodecTypeH264,
     AVVideoWidthKey: @(outputSize.width),
     AVVideoHeightKey: @(outputSize.height),
+    AVVideoColorPropertiesKey: @{
+      AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+      AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+      AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+    },
     AVVideoCompressionPropertiesKey: @{
-      AVVideoAverageBitRateKey: @(8000000),
+      AVVideoAverageBitRateKey: @(12000000),
       AVVideoExpectedSourceFrameRateKey: @(30),
       AVVideoMaxKeyFrameIntervalKey: @(30)
     }
@@ -44,6 +49,9 @@
     (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
     (id)kCVPixelBufferWidthKey: @(outputSize.width),
     (id)kCVPixelBufferHeightKey: @(outputSize.height),
+    (id)kCVImageBufferColorPrimariesKey: (id)kCVImageBufferColorPrimaries_ITU_R_709_2,
+    (id)kCVImageBufferTransferFunctionKey: (id)kCVImageBufferTransferFunction_ITU_R_709_2,
+    (id)kCVImageBufferYCbCrMatrixKey: (id)kCVImageBufferYCbCrMatrix_ITU_R_709_2,
     (id)kCVPixelBufferIOSurfacePropertiesKey: @{}
   };
   AVAssetWriterInputPixelBufferAdaptor *adaptor =
@@ -169,12 +177,20 @@
     return;
   }
 
-  CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  if (colorSpace) {
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, colorSpace, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+  }
   [self.ciContext render:composited
          toCVPixelBuffer:pixelBuffer
                   bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
               colorSpace:colorSpace];
-  CGColorSpaceRelease(colorSpace);
+  if (colorSpace) {
+    CGColorSpaceRelease(colorSpace);
+  }
 
   if (![self.realtimePixelBufferAdaptor appendPixelBuffer:pixelBuffer withPresentationTime:time]) {
     self.realtimeDroppedFrameCount += 1;
