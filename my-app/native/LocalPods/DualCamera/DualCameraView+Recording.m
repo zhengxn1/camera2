@@ -64,6 +64,12 @@
   DualCameraDeviceOrientation orientation = self.deviceOrientation;
   CGSize outputSize = [self realtimeRecordingOutputSizeForAspectRatio:aspectRatio
                                                              landscape:[self isDeviceOrientationLandscape:orientation]];
+  CIImage *frontFrame = nil;
+  CIImage *backFrame = nil;
+  @synchronized(self) {
+    frontFrame = self.latestFrontFrame;
+    backFrame = self.latestBackFrame;
+  }
   @synchronized(self) {
     if ([self canUseWarmedRealtimePipelineForAspectRatio:aspectRatio canvasSize:canvasSize outputSize:outputSize] ||
         self.realtimePipelineWarmupInProgress) {
@@ -76,6 +82,20 @@
     NSDictionary *videoSettings = [self realtimeVideoSettingsForOutputSize:outputSize];
     NSDictionary *pixelAttrs = [self realtimePixelBufferAttributesForOutputSize:outputSize];
     NSDictionary *audioSettings = [self realtimeAudioSettings];
+    DualCameraLayoutState *warmupState = [self layoutStateSnapshotForCanvasSize:canvasSize
+                                                                     outputSize:outputSize
+                                                                    orientation:orientation];
+    warmupState.frontMirrored = self.frontPreviewMirrored;
+    warmupState.backMirrored = self.backPreviewMirrored;
+    CIImage *warmupImage = nil;
+    if (frontFrame && backFrame) {
+      warmupImage = [self compositedImageForLayoutState:warmupState
+                                                  front:frontFrame
+                                                   back:backFrame];
+    }
+    if (!warmupImage) {
+      warmupImage = [self blackCanvasSize:outputSize];
+    }
 
     CVPixelBufferRef scratchBuffer = NULL;
     CVReturn createStatus = CVPixelBufferCreate(kCFAllocatorDefault,
@@ -85,7 +105,6 @@
                                                 (__bridge CFDictionaryRef)pixelAttrs,
                                                 &scratchBuffer);
     if (createStatus == kCVReturnSuccess && scratchBuffer) {
-      CIImage *warmupImage = [self blackCanvasSize:outputSize];
       CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
       [self.ciContext render:warmupImage
              toCVPixelBuffer:scratchBuffer
@@ -446,6 +465,8 @@
   self.realtimeDroppedAudioSampleCount = 0;
   self.lastRealtimeVideoPTS = kCMTimeInvalid;
   self.hasLastRealtimeVideoPTS = NO;
+  self.pendingStartRecordingAfterWarmup = NO;
+  self.pendingStartRecordingCanvasSize = CGSizeZero;
   self.realtimeRecordingState = DualCameraRealtimeRecordingStateIdle;
   self.isDualRecordingActive = NO;
   [self updateDeviceOrientation:[UIDevice currentDevice].orientation];

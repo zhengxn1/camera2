@@ -112,6 +112,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) CGSize warmedRealtimeOutputSize;
 @property (nonatomic, assign) BOOL realtimePipelineWarmupInProgress;
 @property (nonatomic, assign) BOOL realtimePipelineWarmed;
+@property (nonatomic, assign) BOOL pendingStartRecordingAfterWarmup;
+@property (nonatomic, assign) CGSize pendingStartRecordingCanvasSize;
 @property (nonatomic, copy) NSString *realtimeRecordingPath;
 @property (nonatomic, copy) NSString *realtimeRecordingAspectRatio;
 @property (nonatomic, assign) CGSize realtimeOutputSize;

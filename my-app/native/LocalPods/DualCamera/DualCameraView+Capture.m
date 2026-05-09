@@ -129,6 +129,16 @@
         [self emitRecordingError:@"Realtime recording unavailable — video data outputs are not configured."];
         return;
       }
+      __block BOOL hasBothFrames = NO;
+      @synchronized(self) {
+        hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
+      }
+      if (!hasBothFrames) {
+        self.pendingStartRecordingAfterWarmup = YES;
+        self.pendingStartRecordingCanvasSize = canvasSizeForRecording;
+        NSLog(@"[DualCamera] Deferring first recording start until both camera frames are ready.");
+        return;
+      }
       [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSizeForRecording];
       dispatch_async(self.realtimeRenderQueue, ^{
         dispatch_async(self.sessionQueue, ^{
@@ -327,6 +337,24 @@
       dispatch_async(dispatch_get_main_queue(), ^{
         CGSize canvasSize = self.bounds.size;
         [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSize];
+      });
+    }
+  }
+
+  if (self.pendingStartRecordingAfterWarmup && !self.isDualRecordingActive && isBackOutput) {
+    __block BOOL hasBothFrames = NO;
+    @synchronized(self) {
+      hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
+    }
+    if (hasBothFrames) {
+      CGSize canvasSize = self.pendingStartRecordingCanvasSize;
+      self.pendingStartRecordingAfterWarmup = NO;
+      self.pendingStartRecordingCanvasSize = CGSizeZero;
+      [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSize];
+      dispatch_async(self.realtimeRenderQueue, ^{
+        dispatch_async(self.sessionQueue, ^{
+          [self startRealtimeRecordingWithCanvasSize:canvasSize];
+        });
       });
     }
   }
