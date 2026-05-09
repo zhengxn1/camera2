@@ -129,7 +129,12 @@
         [self emitRecordingError:@"Realtime recording unavailable — video data outputs are not configured."];
         return;
       }
-      [self startRealtimeRecordingWithCanvasSize:canvasSizeForRecording];
+      [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSizeForRecording];
+      dispatch_async(self.realtimeRenderQueue, ^{
+        dispatch_async(self.sessionQueue, ^{
+          [self startRealtimeRecordingWithCanvasSize:canvasSizeForRecording];
+        });
+      });
     } else {
       // Single-cam
       self.canvasSizeAtRecording = canvasSizeForRecording;

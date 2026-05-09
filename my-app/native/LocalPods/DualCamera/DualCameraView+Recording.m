@@ -120,14 +120,19 @@
     }
     [[NSFileManager defaultManager] removeItemAtURL:warmupURL error:nil];
 
+    BOOL warmupSucceeded = (createStatus == kCVReturnSuccess && !writerError);
     @synchronized(self) {
-      self.warmedRealtimeVideoSettings = videoSettings;
-      self.warmedRealtimePixelBufferAttributes = pixelAttrs;
-      self.warmedRealtimeAudioSettings = audioSettings;
-      self.warmedRealtimeAspectRatio = aspectRatio;
-      self.warmedRealtimeCanvasSize = canvasSize;
-      self.warmedRealtimeOutputSize = outputSize;
-      self.realtimePipelineWarmed = YES;
+      if (warmupSucceeded) {
+        self.warmedRealtimeVideoSettings = videoSettings;
+        self.warmedRealtimePixelBufferAttributes = pixelAttrs;
+        self.warmedRealtimeAudioSettings = audioSettings;
+        self.warmedRealtimeAspectRatio = aspectRatio;
+        self.warmedRealtimeCanvasSize = canvasSize;
+        self.warmedRealtimeOutputSize = outputSize;
+        self.realtimePipelineWarmed = YES;
+      } else {
+        self.realtimePipelineWarmed = NO;
+      }
       self.realtimePipelineWarmupInProgress = NO;
     }
     NSLog(@"[DualCamera] Realtime pipeline warmed aspect=%@ canvas=%@ output=%@ scratch=%d writerErr=%@",
