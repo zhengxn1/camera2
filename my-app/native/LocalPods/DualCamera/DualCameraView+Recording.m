@@ -173,77 +173,78 @@ static NSString *DCRealtimeWriterStatusString(AVAssetWriterStatus status) {
       AVAssetWriterInputPixelBufferAdaptor *adaptor =
         [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:videoInput
                                                                          sourcePixelBufferAttributes:pixelAttrs];
-      CVPixelBufferPoolRef pool = adaptor.pixelBufferPool;
-      if (pool) {
-        CVPixelBufferRef poolBuffer = NULL;
-        NSTimeInterval poolStart = CFAbsoluteTimeGetCurrent();
-        if (CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &poolBuffer) == kCVReturnSuccess && poolBuffer) {
-          NSLog(@"[DualCamera][RecordTrace #%ld] warmup pool buffer created duration=%.3fs",
-                (long)traceID, CFAbsoluteTimeGetCurrent() - poolStart);
-          NSTimeInterval poolRenderStart = CFAbsoluteTimeGetCurrent();
-          CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-          [self.ciContext render:warmupImage
-                 toCVPixelBuffer:poolBuffer
-                          bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
-                      colorSpace:colorSpace];
-          if (colorSpace) {
-            CGColorSpaceRelease(colorSpace);
-          }
-          NSLog(@"[DualCamera][RecordTrace #%ld] warmup pool render done duration=%.3fs",
-                (long)traceID, CFAbsoluteTimeGetCurrent() - poolRenderStart);
+      CVPixelBufferRef warmupBuffer = NULL;
+      NSTimeInterval bufferStart = CFAbsoluteTimeGetCurrent();
+      CVReturn bufferStatus = CVPixelBufferCreate(kCFAllocatorDefault,
+                                                  (size_t)outputSize.width,
+                                                  (size_t)outputSize.height,
+                                                  kCVPixelFormatType_32BGRA,
+                                                  (__bridge CFDictionaryRef)pixelAttrs,
+                                                  &warmupBuffer);
+      if (bufferStatus == kCVReturnSuccess && warmupBuffer) {
+        NSLog(@"[DualCamera][RecordTrace #%ld] warmup standalone buffer created duration=%.3fs poolAvailable=%d",
+              (long)traceID, CFAbsoluteTimeGetCurrent() - bufferStart, adaptor.pixelBufferPool != NULL);
+        NSTimeInterval bufferRenderStart = CFAbsoluteTimeGetCurrent();
+        CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+        [self.ciContext render:warmupImage
+               toCVPixelBuffer:warmupBuffer
+                        bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
+                    colorSpace:colorSpace];
+        if (colorSpace) {
+          CGColorSpaceRelease(colorSpace);
+        }
+        NSLog(@"[DualCamera][RecordTrace #%ld] warmup standalone render done duration=%.3fs",
+              (long)traceID, CFAbsoluteTimeGetCurrent() - bufferRenderStart);
 
-          NSTimeInterval startWritingStart = CFAbsoluteTimeGetCurrent();
-          if ([writer startWriting]) {
-            NSLog(@"[DualCamera][RecordTrace #%ld] warmup startWriting ok duration=%.3fs status=%@",
-                  (long)traceID, CFAbsoluteTimeGetCurrent() - startWritingStart,
+        NSTimeInterval startWritingStart = CFAbsoluteTimeGetCurrent();
+        if ([writer startWriting]) {
+          NSLog(@"[DualCamera][RecordTrace #%ld] warmup startWriting ok duration=%.3fs status=%@ poolAvailable=%d",
+                (long)traceID, CFAbsoluteTimeGetCurrent() - startWritingStart,
+                DCRealtimeWriterStatusString(writer.status), adaptor.pixelBufferPool != NULL);
+          [writer startSessionAtSourceTime:kCMTimeZero];
+          NSTimeInterval appendStart = CFAbsoluteTimeGetCurrent();
+          if (videoInput.isReadyForMoreMediaData &&
+              [adaptor appendPixelBuffer:warmupBuffer withPresentationTime:kCMTimeZero]) {
+            NSLog(@"[DualCamera][RecordTrace #%ld] warmup append ok duration=%.3fs status=%@",
+                  (long)traceID, CFAbsoluteTimeGetCurrent() - appendStart,
                   DCRealtimeWriterStatusString(writer.status));
-            [writer startSessionAtSourceTime:kCMTimeZero];
-            NSTimeInterval appendStart = CFAbsoluteTimeGetCurrent();
-            if (videoInput.isReadyForMoreMediaData &&
-                [adaptor appendPixelBuffer:poolBuffer withPresentationTime:kCMTimeZero]) {
-              NSLog(@"[DualCamera][RecordTrace #%ld] warmup append ok duration=%.3fs status=%@",
-                    (long)traceID, CFAbsoluteTimeGetCurrent() - appendStart,
-                    DCRealtimeWriterStatusString(writer.status));
-              [videoInput markAsFinished];
-              dispatch_semaphore_t finishSemaphore = dispatch_semaphore_create(0);
-              NSTimeInterval finishStart = CFAbsoluteTimeGetCurrent();
-              [writer finishWritingWithCompletionHandler:^{
-                writerWarmupSucceeded = (writer.status == AVAssetWriterStatusCompleted);
-                NSLog(@"[DualCamera][RecordTrace #%ld] warmup finish callback success=%d status=%@ error=%@ duration=%.3fs",
-                      (long)traceID, writerWarmupSucceeded, DCRealtimeWriterStatusString(writer.status),
-                      writer.error, CFAbsoluteTimeGetCurrent() - finishStart);
-                dispatch_semaphore_signal(finishSemaphore);
-              }];
-              dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC));
-              if (dispatch_semaphore_wait(finishSemaphore, timeout) != 0) {
-                [writer cancelWriting];
-                writerWarmupSucceeded = NO;
-                NSLog(@"[DualCamera][RecordTrace #%ld] warmup finish timeout status=%@ error=%@",
-                      (long)traceID, DCRealtimeWriterStatusString(writer.status), writer.error);
-              }
-              if (!writerWarmupSucceeded) {
-                writerError = writer.error;
-              }
-            } else {
-              writerError = writer.error;
-              NSLog(@"[DualCamera][RecordTrace #%ld] warmup append failed ready=%d status=%@ error=%@",
-                    (long)traceID, videoInput.isReadyForMoreMediaData,
-                    DCRealtimeWriterStatusString(writer.status), writerError);
+            [videoInput markAsFinished];
+            dispatch_semaphore_t finishSemaphore = dispatch_semaphore_create(0);
+            NSTimeInterval finishStart = CFAbsoluteTimeGetCurrent();
+            [writer finishWritingWithCompletionHandler:^{
+              writerWarmupSucceeded = (writer.status == AVAssetWriterStatusCompleted);
+              NSLog(@"[DualCamera][RecordTrace #%ld] warmup finish callback success=%d status=%@ error=%@ duration=%.3fs",
+                    (long)traceID, writerWarmupSucceeded, DCRealtimeWriterStatusString(writer.status),
+                    writer.error, CFAbsoluteTimeGetCurrent() - finishStart);
+              dispatch_semaphore_signal(finishSemaphore);
+            }];
+            dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC));
+            if (dispatch_semaphore_wait(finishSemaphore, timeout) != 0) {
               [writer cancelWriting];
+              writerWarmupSucceeded = NO;
+              NSLog(@"[DualCamera][RecordTrace #%ld] warmup finish timeout status=%@ error=%@",
+                    (long)traceID, DCRealtimeWriterStatusString(writer.status), writer.error);
+            }
+            if (!writerWarmupSucceeded) {
+              writerError = writer.error;
             }
           } else {
             writerError = writer.error;
-            NSLog(@"[DualCamera][RecordTrace #%ld] warmup startWriting failed status=%@ error=%@ duration=%.3fs",
-                  (long)traceID, DCRealtimeWriterStatusString(writer.status), writerError,
-                  CFAbsoluteTimeGetCurrent() - startWritingStart);
+            NSLog(@"[DualCamera][RecordTrace #%ld] warmup append failed ready=%d status=%@ error=%@",
+                  (long)traceID, videoInput.isReadyForMoreMediaData,
+                  DCRealtimeWriterStatusString(writer.status), writerError);
+            [writer cancelWriting];
           }
-          CVPixelBufferRelease(poolBuffer);
         } else {
-          NSLog(@"[DualCamera][RecordTrace #%ld] warmup pool buffer failed duration=%.3fs",
-                (long)traceID, CFAbsoluteTimeGetCurrent() - poolStart);
+          writerError = writer.error;
+          NSLog(@"[DualCamera][RecordTrace #%ld] warmup startWriting failed status=%@ error=%@ duration=%.3fs",
+                (long)traceID, DCRealtimeWriterStatusString(writer.status), writerError,
+                CFAbsoluteTimeGetCurrent() - startWritingStart);
         }
+        CVPixelBufferRelease(warmupBuffer);
       } else {
-        NSLog(@"[DualCamera][RecordTrace #%ld] warmup missing pixelBufferPool", (long)traceID);
+        NSLog(@"[DualCamera][RecordTrace #%ld] warmup standalone buffer failed status=%d duration=%.3fs",
+              (long)traceID, bufferStatus, CFAbsoluteTimeGetCurrent() - bufferStart);
       }
     } else {
       NSLog(@"[DualCamera][RecordTrace #%ld] warmup cannot add input writer=%d error=%@",

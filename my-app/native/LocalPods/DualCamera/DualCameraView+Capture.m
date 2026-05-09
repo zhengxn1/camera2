@@ -347,7 +347,9 @@
     }
   }
 
-  if (self.usingMultiCam && !self.realtimePipelineWarmed && !self.realtimePipelineWarmupInProgress) {
+  if (self.usingMultiCam && !self.isDualRecordingActive &&
+      self.realtimeRecordingState == DualCameraRealtimeRecordingStateIdle &&
+      !self.realtimePipelineWarmed && !self.realtimePipelineWarmupInProgress) {
     __block BOOL hasBothFrames = NO;
     @synchronized(self) {
       hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
