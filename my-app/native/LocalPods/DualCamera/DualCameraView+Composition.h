@@ -60,6 +60,11 @@
                      referenceWidth:(CGFloat)referenceWidth
                           landscape:(BOOL)landscape;
 
+- (CGSize)photoOutputSizeForAspectRatio:(NSString *)aspectRatio
+                                   front:(CIImage *)front
+                                    back:(CIImage *)back
+                               landscape:(BOOL)landscape;
+
 - (CGSize)realtimeRecordingOutputSizeForAspectRatio:(NSString *)aspectRatio
                                           landscape:(BOOL)landscape;
 

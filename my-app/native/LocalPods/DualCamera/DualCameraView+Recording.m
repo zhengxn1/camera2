@@ -5,6 +5,136 @@
 
 #pragma mark - State machine
 
+- (NSDictionary *)realtimeVideoSettingsForOutputSize:(CGSize)outputSize {
+  return @{
+    AVVideoCodecKey: AVVideoCodecTypeH264,
+    AVVideoWidthKey: @(outputSize.width),
+    AVVideoHeightKey: @(outputSize.height),
+    AVVideoColorPropertiesKey: @{
+      AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
+      AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
+      AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
+    },
+    AVVideoCompressionPropertiesKey: @{
+      AVVideoAverageBitRateKey: @(12000000),
+      AVVideoExpectedSourceFrameRateKey: @(30),
+      AVVideoMaxKeyFrameIntervalKey: @(30)
+    }
+  };
+}
+
+- (NSDictionary *)realtimePixelBufferAttributesForOutputSize:(CGSize)outputSize {
+  return @{
+    (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
+    (id)kCVPixelBufferWidthKey: @(outputSize.width),
+    (id)kCVPixelBufferHeightKey: @(outputSize.height),
+    (id)kCVImageBufferColorPrimariesKey: (id)kCVImageBufferColorPrimaries_ITU_R_709_2,
+    (id)kCVImageBufferTransferFunctionKey: (id)kCVImageBufferTransferFunction_ITU_R_709_2,
+    (id)kCVImageBufferYCbCrMatrixKey: (id)kCVImageBufferYCbCrMatrix_ITU_R_709_2,
+    (id)kCVPixelBufferIOSurfacePropertiesKey: @{}
+  };
+}
+
+- (NSDictionary *)realtimeAudioSettings {
+  return @{
+    AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+    AVSampleRateKey: @(44100),
+    AVNumberOfChannelsKey: @(1),
+    AVEncoderBitRateKey: @(128000)
+  };
+}
+
+- (BOOL)canUseWarmedRealtimePipelineForAspectRatio:(NSString *)aspectRatio
+                                        canvasSize:(CGSize)canvasSize
+                                        outputSize:(CGSize)outputSize {
+  return self.realtimePipelineWarmed &&
+         [self.warmedRealtimeAspectRatio isEqualToString:aspectRatio] &&
+         CGSizeEqualToSize(self.warmedRealtimeCanvasSize, canvasSize) &&
+         CGSizeEqualToSize(self.warmedRealtimeOutputSize, outputSize) &&
+         self.warmedRealtimeVideoSettings &&
+         self.warmedRealtimePixelBufferAttributes &&
+         self.warmedRealtimeAudioSettings;
+}
+
+- (void)prepareRealtimeRecordingPipelineForCanvasSize:(CGSize)canvasSize {
+  if (CGSizeEqualToSize(canvasSize, CGSizeZero)) return;
+  if (!self.usingMultiCam || !self.isConfigured) return;
+
+  NSString *aspectRatio = self.saveAspectRatio ?: @"9:16";
+  DualCameraDeviceOrientation orientation = self.deviceOrientation;
+  CGSize outputSize = [self realtimeRecordingOutputSizeForAspectRatio:aspectRatio
+                                                             landscape:[self isDeviceOrientationLandscape:orientation]];
+  @synchronized(self) {
+    if ([self canUseWarmedRealtimePipelineForAspectRatio:aspectRatio canvasSize:canvasSize outputSize:outputSize] ||
+        self.realtimePipelineWarmupInProgress) {
+      return;
+    }
+    self.realtimePipelineWarmupInProgress = YES;
+  }
+
+  dispatch_async(self.realtimeRenderQueue, ^{
+    NSDictionary *videoSettings = [self realtimeVideoSettingsForOutputSize:outputSize];
+    NSDictionary *pixelAttrs = [self realtimePixelBufferAttributesForOutputSize:outputSize];
+    NSDictionary *audioSettings = [self realtimeAudioSettings];
+
+    CVPixelBufferRef scratchBuffer = NULL;
+    CVReturn createStatus = CVPixelBufferCreate(kCFAllocatorDefault,
+                                                (size_t)outputSize.width,
+                                                (size_t)outputSize.height,
+                                                kCVPixelFormatType_32BGRA,
+                                                (__bridge CFDictionaryRef)pixelAttrs,
+                                                &scratchBuffer);
+    if (createStatus == kCVReturnSuccess && scratchBuffer) {
+      CIImage *warmupImage = [self blackCanvasSize:outputSize];
+      CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      [self.ciContext render:warmupImage
+             toCVPixelBuffer:scratchBuffer
+                      bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
+                  colorSpace:colorSpace];
+      if (colorSpace) {
+        CGColorSpaceRelease(colorSpace);
+      }
+      CVPixelBufferRelease(scratchBuffer);
+    }
+
+    NSString *warmupPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"dual_realtime_warmup.mp4"];
+    NSURL *warmupURL = [NSURL fileURLWithPath:warmupPath];
+    [[NSFileManager defaultManager] removeItemAtURL:warmupURL error:nil];
+    NSError *writerError = nil;
+    AVAssetWriter *writer = [[AVAssetWriter alloc] initWithURL:warmupURL fileType:AVFileTypeMPEG4 error:&writerError];
+    AVAssetWriterInput *videoInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
+    videoInput.expectsMediaDataInRealTime = YES;
+    if (writer && [writer canAddInput:videoInput]) {
+      [writer addInput:videoInput];
+      AVAssetWriterInputPixelBufferAdaptor *adaptor =
+        [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:videoInput
+                                                                         sourcePixelBufferAttributes:pixelAttrs];
+      CVPixelBufferPoolRef pool = adaptor.pixelBufferPool;
+      if (pool) {
+        CVPixelBufferRef poolBuffer = NULL;
+        if (CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &poolBuffer) == kCVReturnSuccess && poolBuffer) {
+          CVPixelBufferRelease(poolBuffer);
+        }
+      }
+      [writer cancelWriting];
+    }
+    [[NSFileManager defaultManager] removeItemAtURL:warmupURL error:nil];
+
+    @synchronized(self) {
+      self.warmedRealtimeVideoSettings = videoSettings;
+      self.warmedRealtimePixelBufferAttributes = pixelAttrs;
+      self.warmedRealtimeAudioSettings = audioSettings;
+      self.warmedRealtimeAspectRatio = aspectRatio;
+      self.warmedRealtimeCanvasSize = canvasSize;
+      self.warmedRealtimeOutputSize = outputSize;
+      self.realtimePipelineWarmed = YES;
+      self.realtimePipelineWarmupInProgress = NO;
+    }
+    NSLog(@"[DualCamera] Realtime pipeline warmed aspect=%@ canvas=%@ output=%@ scratch=%d writerErr=%@",
+          aspectRatio, NSStringFromCGSize(canvasSize), NSStringFromCGSize(outputSize), createStatus, writerError);
+  });
+}
+
 - (BOOL)startRealtimeRecordingWithCanvasSize:(CGSize)canvasSize {
   if (self.realtimeRecordingState != DualCameraRealtimeRecordingStateIdle || self.realtimeAssetWriter) return NO;
 
@@ -23,6 +153,9 @@
   DualCameraDeviceOrientation recordingOrientation = self.deviceOrientation;
   CGSize outputSize = [self realtimeRecordingOutputSizeForAspectRatio:aspectRatio
                                                              landscape:[self isDeviceOrientationLandscape:recordingOrientation]];
+  BOOL useWarmSettings = [self canUseWarmedRealtimePipelineForAspectRatio:aspectRatio
+                                                               canvasSize:canvasSize
+                                                               outputSize:outputSize];
   DualCameraLayoutState *recordingState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                        outputSize:outputSize
                                                                       orientation:recordingOrientation];
@@ -32,44 +165,23 @@
   // camera photo/movie export semantics.
   recordingState.frontMirrored = self.frontPreviewMirrored;
   recordingState.backMirrored = self.backPreviewMirrored;
-  NSDictionary *videoSettings = @{
-    AVVideoCodecKey: AVVideoCodecTypeH264,
-    AVVideoWidthKey: @(outputSize.width),
-    AVVideoHeightKey: @(outputSize.height),
-    AVVideoColorPropertiesKey: @{
-      AVVideoColorPrimariesKey: AVVideoColorPrimaries_ITU_R_709_2,
-      AVVideoTransferFunctionKey: AVVideoTransferFunction_ITU_R_709_2,
-      AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
-    },
-    AVVideoCompressionPropertiesKey: @{
-      AVVideoAverageBitRateKey: @(12000000),
-      AVVideoExpectedSourceFrameRateKey: @(30),
-      AVVideoMaxKeyFrameIntervalKey: @(30)
-    }
-  };
+  NSDictionary *videoSettings = useWarmSettings
+    ? self.warmedRealtimeVideoSettings
+    : [self realtimeVideoSettingsForOutputSize:outputSize];
   AVAssetWriterInput *videoInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
   videoInput.expectsMediaDataInRealTime = YES;
   videoInput.transform = CGAffineTransformIdentity;
 
-  NSDictionary *pixelAttrs = @{
-    (id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
-    (id)kCVPixelBufferWidthKey: @(outputSize.width),
-    (id)kCVPixelBufferHeightKey: @(outputSize.height),
-    (id)kCVImageBufferColorPrimariesKey: (id)kCVImageBufferColorPrimaries_ITU_R_709_2,
-    (id)kCVImageBufferTransferFunctionKey: (id)kCVImageBufferTransferFunction_ITU_R_709_2,
-    (id)kCVImageBufferYCbCrMatrixKey: (id)kCVImageBufferYCbCrMatrix_ITU_R_709_2,
-    (id)kCVPixelBufferIOSurfacePropertiesKey: @{}
-  };
+  NSDictionary *pixelAttrs = useWarmSettings
+    ? self.warmedRealtimePixelBufferAttributes
+    : [self realtimePixelBufferAttributesForOutputSize:outputSize];
   AVAssetWriterInputPixelBufferAdaptor *adaptor =
     [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:videoInput
                                                                      sourcePixelBufferAttributes:pixelAttrs];
 
-  NSDictionary *audioSettings = @{
-    AVFormatIDKey: @(kAudioFormatMPEG4AAC),
-    AVSampleRateKey: @(44100),
-    AVNumberOfChannelsKey: @(1),
-    AVEncoderBitRateKey: @(128000)
-  };
+  NSDictionary *audioSettings = useWarmSettings
+    ? self.warmedRealtimeAudioSettings
+    : [self realtimeAudioSettings];
   AVAssetWriterInput *audioInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
   audioInput.expectsMediaDataInRealTime = YES;
 
@@ -114,6 +226,7 @@
         self.multiCamSession.hardwareCost, self.multiCamSession.systemPressureCost,
         NSStringFromCGRect([recordingRects[@"back"] CGRectValue]),
         NSStringFromCGRect([recordingRects[@"front"] CGRectValue]));
+  NSLog(@"[DualCamera] Realtime recording warm settings used=%d", useWarmSettings);
   return YES;
 }
 
@@ -212,7 +325,7 @@
     }
     if (self.realtimeFinishWhenFirstFrameWritten && self.realtimeWrittenVideoFrameCount > 0) {
       self.realtimeFinishWhenFirstFrameWritten = NO;
-      dispatch_async(self.videoDataOutputQueue, ^{
+      dispatch_async(self.realtimeRenderQueue, ^{
         [self finishRealtimeRecording];
       });
     }

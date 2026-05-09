@@ -245,6 +245,29 @@
   return portraitSize;
 }
 
+- (CGSize)photoOutputSizeForAspectRatio:(NSString *)aspectRatio
+                                   front:(CIImage *)front
+                                    back:(CIImage *)back
+                               landscape:(BOOL)landscape {
+  CGFloat targetReferenceWidth = 1440.0;
+  CGFloat minSourceLongEdge = CGFLOAT_MAX;
+  if (front) {
+    minSourceLongEdge = MIN(minSourceLongEdge, MAX(front.extent.size.width, front.extent.size.height));
+  }
+  if (back) {
+    minSourceLongEdge = MIN(minSourceLongEdge, MAX(back.extent.size.width, back.extent.size.height));
+  }
+
+  if (minSourceLongEdge != CGFLOAT_MAX && minSourceLongEdge > 0) {
+    targetReferenceWidth = MAX(720.0, MIN(targetReferenceWidth, minSourceLongEdge));
+  } else {
+    targetReferenceWidth = 1080.0;
+  }
+  return [self outputSizeForAspectRatio:aspectRatio
+                         referenceWidth:targetReferenceWidth
+                              landscape:landscape];
+}
+
 - (CGSize)realtimeRecordingOutputSizeForAspectRatio:(NSString *)aspectRatio landscape:(BOOL)landscape {
   return [self outputSizeForAspectRatio:aspectRatio referenceWidth:1080.0 landscape:landscape];
 }

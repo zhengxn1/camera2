@@ -52,7 +52,7 @@
     if (!self.isConfigured || !self.isRunning) return;
 
     if (self.isDualRecordingActive || self.realtimeAssetWriter) {
-      dispatch_async(self.videoDataOutputQueue, ^{
+      dispatch_async(self.realtimeRenderQueue, ^{
         [self finishRealtimeRecording];
       });
     }
@@ -315,10 +315,12 @@
   self.backDeviceInput = backInput;
   self.frontPhotoOutput = frontPhotoOutput;
   self.backPhotoOutput = backPhotoOutput;
-  NSLog(@"[DualCamera] Session config complete — realtime front=%@ back=%@ audio=%@",
+  NSLog(@"[DualCamera] Session config complete — realtime front=%@ back=%@ audio=%@ hardwareCost=%.3f systemPressureCost=%.3f",
         self.frontVideoDataOutput ? @"OK" : @"NIL",
         self.backVideoDataOutput ? @"OK" : @"NIL",
-        self.audioDataOutput ? @"OK" : @"NIL");
+        self.audioDataOutput ? @"OK" : @"NIL",
+        self.multiCamSession.hardwareCost,
+        self.multiCamSession.systemPressureCost);
   self.usingMultiCam = YES;
   self.isConfigured = YES;
   [self registerSessionNotifications:self.multiCamSession];
@@ -694,6 +696,9 @@
 
   if (format) {
     device.activeFormat = format;
+    CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+    NSLog(@"[DualCamera] Selected multicam format position=%ld dimensions=%dx%d",
+          (long)device.position, dimensions.width, dimensions.height);
   }
   device.activeVideoMinFrameDuration = CMTimeMake(1, 30);
   device.activeVideoMaxFrameDuration = CMTimeMake(1, 30);
@@ -720,6 +725,7 @@
 - (AVCaptureDeviceFormat *)bestMultiCamFormatForDevice:(AVCaptureDevice *)device {
   AVCaptureDeviceFormat *bestFormat = nil;
   int32_t bestArea = 0;
+  NSInteger bestTier = -1;
 
   for (AVCaptureDeviceFormat *format in device.formats) {
     if (![format isMultiCamSupported] || ![self formatSupportsThirtyFps:format]) {
@@ -728,18 +734,21 @@
 
     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
     int32_t area = dimensions.width * dimensions.height;
-    BOOL fitsModerateBudget = dimensions.width <= 1920 && dimensions.height <= 1440;
-    BOOL currentBestFitsBudget = NO;
-    if (bestFormat) {
-      CMVideoDimensions bestDimensions = CMVideoFormatDescriptionGetDimensions(bestFormat.formatDescription);
-      currentBestFitsBudget = bestDimensions.width <= 1920 && bestDimensions.height <= 1440;
+    int32_t longEdge = MAX(dimensions.width, dimensions.height);
+    int32_t shortEdge = MIN(dimensions.width, dimensions.height);
+    NSInteger tier = 0;
+    if (longEdge <= 1920 && shortEdge <= 1440) {
+      tier = 2;
+    } else if (longEdge <= 2560 && shortEdge <= 1440) {
+      tier = 1;
     }
 
     if (!bestFormat ||
-        (fitsModerateBudget && !currentBestFitsBudget) ||
-        (fitsModerateBudget == currentBestFitsBudget && area > bestArea)) {
+        tier > bestTier ||
+        (tier == bestTier && area > bestArea)) {
       bestFormat = format;
       bestArea = area;
+      bestTier = tier;
     }
   }
 

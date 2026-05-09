@@ -104,6 +104,14 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) AVAssetWriterInput *realtimeVideoInput;
 @property (nonatomic, strong) AVAssetWriterInput *realtimeAudioInput;
 @property (nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *realtimePixelBufferAdaptor;
+@property (nonatomic, strong) NSDictionary *warmedRealtimeVideoSettings;
+@property (nonatomic, strong) NSDictionary *warmedRealtimePixelBufferAttributes;
+@property (nonatomic, strong) NSDictionary *warmedRealtimeAudioSettings;
+@property (nonatomic, copy) NSString *warmedRealtimeAspectRatio;
+@property (nonatomic, assign) CGSize warmedRealtimeCanvasSize;
+@property (nonatomic, assign) CGSize warmedRealtimeOutputSize;
+@property (nonatomic, assign) BOOL realtimePipelineWarmupInProgress;
+@property (nonatomic, assign) BOOL realtimePipelineWarmed;
 @property (nonatomic, copy) NSString *realtimeRecordingPath;
 @property (nonatomic, copy) NSString *realtimeRecordingAspectRatio;
 @property (nonatomic, assign) CGSize realtimeOutputSize;

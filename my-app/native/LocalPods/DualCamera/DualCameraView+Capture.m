@@ -61,9 +61,10 @@
   }
 
   DualCameraDeviceOrientation photoOrientation = self.deviceOrientation;
-  CGSize saveCanvas = [self outputSizeForAspectRatio:self.saveAspectRatio ?: @"9:16"
-                                       referenceWidth:1440.0
-                                            landscape:[self isDeviceOrientationLandscape:photoOrientation]];
+  CGSize saveCanvas = [self photoOutputSizeForAspectRatio:self.saveAspectRatio ?: @"9:16"
+                                                    front:frontFrame
+                                                     back:backFrame
+                                                landscape:[self isDeviceOrientationLandscape:photoOrientation]];
   DualCameraLayoutState *photoState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                   outputSize:saveCanvas
                                                                  orientation:photoOrientation];
@@ -309,6 +310,19 @@
   } else {
     @synchronized(self) {
       self.latestBackFrame = ciImage;
+    }
+  }
+
+  if (self.usingMultiCam && !self.realtimePipelineWarmed && !self.realtimePipelineWarmupInProgress) {
+    __block BOOL hasBothFrames = NO;
+    @synchronized(self) {
+      hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
+    }
+    if (hasBothFrames) {
+      dispatch_async(dispatch_get_main_queue(), ^{
+        CGSize canvasSize = self.bounds.size;
+        [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSize];
+      });
     }
   }
 

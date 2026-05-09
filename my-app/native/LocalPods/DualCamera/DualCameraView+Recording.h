@@ -17,6 +17,9 @@
 /// Prepare the AVAssetWriter for a new recording. Returns NO on failure (error emitted internally).
 - (BOOL)startRealtimeRecordingWithCanvasSize:(CGSize)canvasSize;
 
+/// Warm expensive recording settings, pixel-buffer allocation, and CoreImage render path.
+- (void)prepareRealtimeRecordingPipelineForCanvasSize:(CGSize)canvasSize;
+
 /// Start the underlying AVAssetWriter at the given sample timestamp (idempotent).
 - (BOOL)ensureRealtimeWriterStartedAtTime:(CMTime)time;
 
