@@ -120,23 +120,12 @@
   dispatch_sync(dispatch_get_main_queue(), ^{
     canvasSizeForRecording = self.bounds.size;
   });
-  NSTimeInterval requestTime = CFAbsoluteTimeGetCurrent();
 
   dispatch_async(self.sessionQueue, ^{
     if (!self.isConfigured) return;
 
     if (self.usingMultiCam) {
-      self.realtimeRecordingTraceID += 1;
-      self.realtimeRecordingRequestTime = requestTime;
-      NSInteger traceID = self.realtimeRecordingTraceID;
-      NSLog(@"[DualCamera][RecordTrace #%ld] request received canvas=%@ layout=%@ aspect=%@ warmed=%d warmInProgress=%d state=%ld active=%d",
-            (long)traceID, NSStringFromCGSize(canvasSizeForRecording), self.currentLayout,
-            self.saveAspectRatio ?: @"9:16", self.realtimePipelineWarmed,
-            self.realtimePipelineWarmupInProgress, (long)self.realtimeRecordingState,
-            self.isDualRecordingActive);
       if (!self.frontVideoDataOutput || !self.backVideoDataOutput) {
-        NSLog(@"[DualCamera][RecordTrace #%ld] request rejected: video data outputs missing front=%d back=%d",
-              (long)traceID, self.frontVideoDataOutput != nil, self.backVideoDataOutput != nil);
         [self emitRecordingError:@"Realtime recording unavailable — video data outputs are not configured."];
         return;
       }
@@ -144,18 +133,14 @@
       @synchronized(self) {
         hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
       }
-      NSLog(@"[DualCamera][RecordTrace #%ld] request frame readiness hasBoth=%d front=%d back=%d",
-            (long)traceID, hasBothFrames, self.latestFrontFrame != nil, self.latestBackFrame != nil);
       if (!hasBothFrames) {
         self.pendingStartRecordingAfterWarmup = YES;
         self.pendingStartRecordingCanvasSize = canvasSizeForRecording;
-        NSLog(@"[DualCamera][RecordTrace #%ld] deferring start until both camera frames are ready", (long)traceID);
+        NSLog(@"[DualCamera] Deferring first recording start until both camera frames are ready.");
         return;
       }
       [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSizeForRecording];
       dispatch_async(self.realtimeRenderQueue, ^{
-        NSLog(@"[DualCamera][RecordTrace #%ld] start gate passed on render queue sinceRequest=%.3fs",
-              (long)traceID, CFAbsoluteTimeGetCurrent() - requestTime);
         dispatch_async(self.sessionQueue, ^{
           [self startRealtimeRecordingWithCanvasSize:canvasSizeForRecording];
         });
@@ -183,10 +168,6 @@
     if (!self.isConfigured) return;
 
     if (self.usingMultiCam) {
-      NSInteger traceID = self.realtimeRecordingTraceID;
-      NSLog(@"[DualCamera][RecordTrace #%ld] stop requested state=%ld active=%d written=%ld dropped=%ld",
-            (long)traceID, (long)self.realtimeRecordingState, self.isDualRecordingActive,
-            (long)self.realtimeWrittenVideoFrameCount, (long)self.realtimeDroppedFrameCount);
       dispatch_async(self.realtimeRenderQueue, ^{
         [self finishRealtimeRecording];
       });
@@ -357,8 +338,6 @@
     if (hasBothFrames) {
       dispatch_async(dispatch_get_main_queue(), ^{
         CGSize canvasSize = self.bounds.size;
-        NSLog(@"[DualCamera][RecordTrace #%ld] auto warmup trigger from frames canvas=%@",
-              (long)self.realtimeRecordingTraceID, NSStringFromCGSize(canvasSize));
         [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSize];
       });
     }
@@ -371,17 +350,10 @@
     }
     if (hasBothFrames) {
       CGSize canvasSize = self.pendingStartRecordingCanvasSize;
-      NSInteger traceID = self.realtimeRecordingTraceID;
       self.pendingStartRecordingAfterWarmup = NO;
       self.pendingStartRecordingCanvasSize = CGSizeZero;
-      NSLog(@"[DualCamera][RecordTrace #%ld] pending start released by back frame canvas=%@ sinceRequest=%.3fs",
-            (long)traceID, NSStringFromCGSize(canvasSize),
-            self.realtimeRecordingRequestTime > 0 ? CFAbsoluteTimeGetCurrent() - self.realtimeRecordingRequestTime : -1);
       [self prepareRealtimeRecordingPipelineForCanvasSize:canvasSize];
       dispatch_async(self.realtimeRenderQueue, ^{
-        NSLog(@"[DualCamera][RecordTrace #%ld] pending start gate passed on render queue sinceRequest=%.3fs",
-              (long)traceID,
-              self.realtimeRecordingRequestTime > 0 ? CFAbsoluteTimeGetCurrent() - self.realtimeRecordingRequestTime : -1);
         dispatch_async(self.sessionQueue, ^{
           [self startRealtimeRecordingWithCanvasSize:canvasSize];
         });
