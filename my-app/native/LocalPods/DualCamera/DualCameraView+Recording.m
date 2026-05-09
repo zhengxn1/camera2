@@ -123,6 +123,7 @@
     AVAssetWriter *writer = [[AVAssetWriter alloc] initWithURL:warmupURL fileType:AVFileTypeMPEG4 error:&writerError];
     AVAssetWriterInput *videoInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
     videoInput.expectsMediaDataInRealTime = YES;
+    __block BOOL writerWarmupSucceeded = NO;
     if (writer && [writer canAddInput:videoInput]) {
       [writer addInput:videoInput];
       AVAssetWriterInputPixelBufferAdaptor *adaptor =
@@ -132,14 +133,47 @@
       if (pool) {
         CVPixelBufferRef poolBuffer = NULL;
         if (CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &poolBuffer) == kCVReturnSuccess && poolBuffer) {
+          CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+          [self.ciContext render:warmupImage
+                 toCVPixelBuffer:poolBuffer
+                          bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
+                      colorSpace:colorSpace];
+          if (colorSpace) {
+            CGColorSpaceRelease(colorSpace);
+          }
+
+          if ([writer startWriting]) {
+            [writer startSessionAtSourceTime:kCMTimeZero];
+            if (videoInput.isReadyForMoreMediaData &&
+                [adaptor appendPixelBuffer:poolBuffer withPresentationTime:kCMTimeZero]) {
+              [videoInput markAsFinished];
+              dispatch_semaphore_t finishSemaphore = dispatch_semaphore_create(0);
+              [writer finishWritingWithCompletionHandler:^{
+                writerWarmupSucceeded = (writer.status == AVAssetWriterStatusCompleted);
+                dispatch_semaphore_signal(finishSemaphore);
+              }];
+              dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC));
+              if (dispatch_semaphore_wait(finishSemaphore, timeout) != 0) {
+                [writer cancelWriting];
+                writerWarmupSucceeded = NO;
+              }
+              if (!writerWarmupSucceeded) {
+                writerError = writer.error;
+              }
+            } else {
+              writerError = writer.error;
+              [writer cancelWriting];
+            }
+          } else {
+            writerError = writer.error;
+          }
           CVPixelBufferRelease(poolBuffer);
         }
       }
-      [writer cancelWriting];
     }
     [[NSFileManager defaultManager] removeItemAtURL:warmupURL error:nil];
 
-    BOOL warmupSucceeded = (createStatus == kCVReturnSuccess && !writerError);
+    BOOL warmupSucceeded = (createStatus == kCVReturnSuccess && !writerError && writerWarmupSucceeded);
     @synchronized(self) {
       if (warmupSucceeded) {
         self.warmedRealtimeVideoSettings = videoSettings;
@@ -154,8 +188,8 @@
       }
       self.realtimePipelineWarmupInProgress = NO;
     }
-    NSLog(@"[DualCamera] Realtime pipeline warmed aspect=%@ canvas=%@ output=%@ scratch=%d writerErr=%@",
-          aspectRatio, NSStringFromCGSize(canvasSize), NSStringFromCGSize(outputSize), createStatus, writerError);
+    NSLog(@"[DualCamera] Realtime pipeline warmed aspect=%@ canvas=%@ output=%@ scratch=%d writerWarm=%d writerErr=%@",
+          aspectRatio, NSStringFromCGSize(canvasSize), NSStringFromCGSize(outputSize), createStatus, writerWarmupSucceeded, writerError);
   });
 }
 
