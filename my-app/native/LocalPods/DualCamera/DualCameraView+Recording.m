@@ -1,6 +1,14 @@
 #import "DualCameraView+Recording.h"
 #import "DualCameraView_Internal.h"
 
+static CGColorSpaceRef DualCameraCreateRealtimeVideoColorSpace(void) {
+  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
+  if (!colorSpace) {
+    colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  }
+  return colorSpace;
+}
+
 @implementation DualCameraView (Recording)
 
 #pragma mark - State machine
@@ -16,9 +24,10 @@
       AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
     },
     AVVideoCompressionPropertiesKey: @{
-      AVVideoAverageBitRateKey: @(12000000),
+      AVVideoAverageBitRateKey: @(20000000),
       AVVideoExpectedSourceFrameRateKey: @(30),
-      AVVideoMaxKeyFrameIntervalKey: @(30)
+      AVVideoMaxKeyFrameIntervalKey: @(30),
+      AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
     }
   };
 }
@@ -91,7 +100,8 @@
     if (frontFrame && backFrame) {
       warmupImage = [self compositedImageForLayoutState:warmupState
                                                   front:frontFrame
-                                                   back:backFrame];
+                                                   back:backFrame
+                                            highQuality:YES];
     }
     if (!warmupImage) {
       warmupImage = [self blackCanvasSize:outputSize];
@@ -105,7 +115,7 @@
                                                 (__bridge CFDictionaryRef)pixelAttrs,
                                                 &scratchBuffer);
     if (createStatus == kCVReturnSuccess && scratchBuffer) {
-      CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+      CGColorSpaceRef colorSpace = DualCameraCreateRealtimeVideoColorSpace();
       [self.ciContext render:warmupImage
              toCVPixelBuffer:scratchBuffer
                       bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
@@ -137,7 +147,7 @@
                                                   (__bridge CFDictionaryRef)pixelAttrs,
                                                   &warmupBuffer);
       if (bufferStatus == kCVReturnSuccess && warmupBuffer) {
-        CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+        CGColorSpaceRef colorSpace = DualCameraCreateRealtimeVideoColorSpace();
         [self.ciContext render:warmupImage
                toCVPixelBuffer:warmupBuffer
                         bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
@@ -341,7 +351,10 @@
   if (!state) {
     state = [self currentLayoutStateForCanvasSize:self.canvasSizeAtRecording outputSize:outputSize];
   }
-  CIImage *composited = [self compositedImageForLayoutState:state front:frontFrame back:backFrame];
+  CIImage *composited = [self compositedImageForLayoutState:state
+                                                      front:frontFrame
+                                                       back:backFrame
+                                                highQuality:YES];
   if (!composited) {
     self.realtimeDroppedFrameCount += 1;
     return;
@@ -360,12 +373,30 @@
     return;
   }
 
-  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  CGColorSpaceRef colorSpace = DualCameraCreateRealtimeVideoColorSpace();
   if (colorSpace) {
     CVBufferSetAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, colorSpace, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+  }
+  if (self.realtimeWrittenVideoFrameCount == 0) {
+    NSDictionary *compression = self.realtimeVideoInput.outputSettings[AVVideoCompressionPropertiesKey];
+    NSNumber *bitrate = compression[AVVideoAverageBitRateKey];
+    id colorPrimaries = (__bridge id)CVBufferGetAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, NULL);
+    id transferFunction = (__bridge id)CVBufferGetAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey, NULL);
+    id ycbcrMatrix = (__bridge id)CVBufferGetAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, NULL);
+    NSLog(@"[DualCamera] Realtime first frame front=%.0fx%.0f back=%.0fx%.0f output=%.0fx%.0f bitrate=%@ colorPrimaries=%@ transfer=%@ matrix=%@",
+          frontFrame.extent.size.width,
+          frontFrame.extent.size.height,
+          backFrame.extent.size.width,
+          backFrame.extent.size.height,
+          outputSize.width,
+          outputSize.height,
+          bitrate ?: @"unknown",
+          colorPrimaries ?: @"unknown",
+          transferFunction ?: @"unknown",
+          ycbcrMatrix ?: @"unknown");
   }
   [self.ciContext render:composited
          toCVPixelBuffer:pixelBuffer
