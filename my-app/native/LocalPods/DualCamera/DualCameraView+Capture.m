@@ -67,6 +67,10 @@
   DualCameraLayoutState *photoState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                   outputSize:saveCanvas
                                                                  orientation:photoOrientation];
+  // WYSIWYG: dual stills are composited from VideoDataOutput frames, so mirror
+  // them like the visible preview rather than like non-mirrored selfie export.
+  photoState.frontMirrored = self.frontPreviewMirrored;
+  photoState.backMirrored = self.backPreviewMirrored;
 
   dispatch_async(self.realtimeRenderQueue, ^{
     @autoreleasepool {

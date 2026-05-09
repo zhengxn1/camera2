@@ -26,6 +26,12 @@
   DualCameraLayoutState *recordingState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                        outputSize:outputSize
                                                                       orientation:recordingOrientation];
+  // WYSIWYG: realtime dual recording is composited from VideoDataOutput frames
+  // and should match the visible preview.  The front preview is mirrored by
+  // default, while frontOutputMirrored intentionally remains off for single
+  // camera photo/movie export semantics.
+  recordingState.frontMirrored = self.frontPreviewMirrored;
+  recordingState.backMirrored = self.backPreviewMirrored;
   NSDictionary *videoSettings = @{
     AVVideoCodecKey: AVVideoCodecTypeH264,
     AVVideoWidthKey: @(outputSize.width),
