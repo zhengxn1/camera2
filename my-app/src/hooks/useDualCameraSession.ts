@@ -1,0 +1,158 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
+import type { CaptureMode } from '../constants';
+import { DualCameraModule, eventEmitter } from '../native';
+
+export interface UseDualCameraSessionOptions {
+  ensureMedia: () => Promise<boolean>;
+}
+
+export interface DualCameraSessionApi {
+  saving: boolean;
+  recording: boolean;
+  recordingStarting: boolean;
+  recordingStopping: boolean;
+  interactionDisabled: boolean;
+  takePhoto: () => Promise<void>;
+  startRecording: () => void;
+  stopRecording: () => void;
+  handleShutterPress: (captureMode: CaptureMode) => void;
+}
+
+/**
+ * Owns the photo / recording lifecycle: capture commands, native event
+ * subscriptions, and the resulting status flags. Uses a latest-ref for the
+ * `ensureMedia` callback so events stay subscribed across permission changes.
+ */
+export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOptions): DualCameraSessionApi {
+  const [saving, setSaving] = useState(false);
+  const [recordingStarting, setRecordingStarting] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordingStopping, setRecordingStopping] = useState(false);
+  const stopRequestedRef = useRef(false);
+
+  const ensureMediaRef = useRef(ensureMedia);
+  ensureMediaRef.current = ensureMedia;
+
+  useEffect(() => {
+    if (!eventEmitter) return undefined;
+
+    const subPhotoSaved = eventEmitter.addListener('onPhotoSaved', async (event: { uri: string }) => {
+      setSaving(false);
+      try {
+        const ok = await ensureMediaRef.current();
+        if (ok) {
+          await MediaLibrary.saveToLibraryAsync(event.uri);
+          Alert.alert('Saved', 'Photo saved to library.');
+        }
+      } catch (e: any) {
+        Alert.alert('Save failed', e?.message ?? String(e));
+      }
+    });
+
+    const subPhotoError = eventEmitter.addListener('onPhotoError', (event: { error?: string }) => {
+      setSaving(false);
+      Alert.alert('Photo failed', event.error ?? 'Unknown error');
+    });
+
+    const subRecordingStarted = eventEmitter.addListener('onRecordingStarted', () => {
+      setRecordingStarting(false);
+      setRecording(true);
+      if (!stopRequestedRef.current) setRecordingStopping(false);
+    });
+
+    const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event: { uri: string }) => {
+      stopRequestedRef.current = false;
+      setRecordingStarting(false);
+      setRecording(false);
+      setRecordingStopping(false);
+      try {
+        const ok = await ensureMediaRef.current();
+        if (ok) {
+          await MediaLibrary.saveToLibraryAsync(event.uri);
+          Alert.alert('Saved', 'Video saved to library.');
+        }
+      } catch (e: any) {
+        Alert.alert('Save failed', e?.message ?? String(e));
+      }
+    });
+
+    const subRecordingError = eventEmitter.addListener('onRecordingError', (event: { error?: string }) => {
+      stopRequestedRef.current = false;
+      setRecordingStarting(false);
+      setRecording(false);
+      setRecordingStopping(false);
+      console.warn('[DualCamera] Recording error', event);
+      Alert.alert('Recording failed', event.error ?? 'Unknown error');
+    });
+
+    const subSessionError = eventEmitter.addListener('onSessionError', (event: { error?: string }) => {
+      stopRequestedRef.current = false;
+      setSaving(false);
+      setRecordingStarting(false);
+      setRecording(false);
+      setRecordingStopping(false);
+      Alert.alert('Camera error', event.error ?? 'Camera session failed.');
+    });
+
+    return () => {
+      subPhotoSaved.remove();
+      subPhotoError.remove();
+      subRecordingStarted.remove();
+      subRecordingFinished.remove();
+      subRecordingError.remove();
+      subSessionError.remove();
+    };
+  }, []);
+
+  const takePhoto = useCallback(async () => {
+    if (!DualCameraModule?.takePhoto) {
+      Alert.alert('Error', 'Native camera module is unavailable.');
+      return;
+    }
+    const ok = await ensureMediaRef.current();
+    if (!ok) return;
+    setSaving(true);
+    DualCameraModule.takePhoto();
+  }, []);
+
+  const startRecording = useCallback(() => {
+    if (!DualCameraModule?.startRecording) {
+      Alert.alert('Error', 'Native camera module is unavailable.');
+      return;
+    }
+    stopRequestedRef.current = false;
+    setRecordingStarting(true);
+    setRecordingStopping(false);
+    DualCameraModule.startRecording();
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (recordingStopping || !DualCameraModule?.stopRecording) return;
+    stopRequestedRef.current = true;
+    setRecordingStopping(true);
+    DualCameraModule.stopRecording();
+  }, [recordingStopping]);
+
+  const handleShutterPress = useCallback((captureMode: CaptureMode) => {
+    if (recordingStopping) return;
+    if (recording || recordingStarting) stopRecording();
+    else if (captureMode === 'picture') takePhoto();
+    else startRecording();
+  }, [recording, recordingStarting, recordingStopping, takePhoto, startRecording, stopRecording]);
+
+  const interactionDisabled = recording || recordingStarting || recordingStopping;
+
+  return {
+    saving,
+    recording,
+    recordingStarting,
+    recordingStopping,
+    interactionDisabled,
+    takePhoto,
+    startRecording,
+    stopRecording,
+    handleShutterPress,
+  };
+}
