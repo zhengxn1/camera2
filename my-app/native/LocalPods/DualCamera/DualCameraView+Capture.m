@@ -86,6 +86,30 @@
   });
 }
 
+- (void)applyHighQualityPhotoSettings:(AVCapturePhotoSettings *)settings
+                             forOutput:(AVCapturePhotoOutput *)output {
+  if (!settings || !output) return;
+
+  // iOS 16+: prioritize quality over speed and use the output's max dimensions.
+  if (@available(iOS 16.0, *)) {
+    settings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
+    if (settings.maxPhotoDimensions.width == 0 && settings.maxPhotoDimensions.height == 0) {
+      settings.maxPhotoDimensions = output.maxPhotoDimensions;
+    }
+  } else if (@available(iOS 13.0, *)) {
+    settings.photoQualityPrioritization = AVCapturePhotoQualityPrioritizationQuality;
+  }
+
+  // iOS < 16 high-resolution flag (deprecated in 16+, ignored without warning).
+  if (@available(iOS 16.0, *)) {
+    // no-op: maxPhotoDimensions covers it
+  } else {
+    if (output.isHighResolutionCaptureEnabled) {
+      settings.highResolutionPhotoEnabled = YES;
+    }
+  }
+}
+
 - (void)internalStartRecording {
   __block CGSize canvasSizeForRecording;
   dispatch_sync(dispatch_get_main_queue(), ^{
