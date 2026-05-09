@@ -128,6 +128,10 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) DualCameraLayoutState *recordingLayoutState;
 @property (nonatomic, assign) CMTime lastRealtimeVideoPTS;
 @property (nonatomic, assign) BOOL hasLastRealtimeVideoPTS;
+@property (nonatomic, assign) NSInteger realtimeRecordingTraceID;
+@property (nonatomic, assign) NSTimeInterval realtimeRecordingRequestTime;
+@property (nonatomic, assign) NSTimeInterval realtimeRecordingPreparedTime;
+@property (nonatomic, assign) NSTimeInterval realtimeWriterStartedTime;
 
 // canvasSizeAtRecording — only declared here (not in .h), used internally
 @property (nonatomic, assign) CGSize canvasSizeAtRecording;
