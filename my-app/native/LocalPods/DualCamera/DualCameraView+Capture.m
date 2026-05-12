@@ -1,6 +1,22 @@
 #import "DualCameraView+Capture.h"
 #import "DualCameraView_Internal.h"
 
+static NSString *DualCameraCaptureFourCCString(OSType code) {
+  char chars[5] = {
+    (char)((code >> 24) & 0xff),
+    (char)((code >> 16) & 0xff),
+    (char)((code >> 8) & 0xff),
+    (char)(code & 0xff),
+    0
+  };
+  return [NSString stringWithFormat:@"%s/%u", chars, (unsigned int)code];
+}
+
+static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
+  if (!buffer || !key) return nil;
+  return (__bridge id)CVBufferGetAttachment(buffer, key, NULL);
+}
+
 @implementation DualCameraView (Capture)
 
 #pragma mark - Entry points
@@ -316,6 +332,36 @@
   BOOL isFrontOutput = (output == self.frontVideoDataOutput);
   BOOL isBackOutput = (output == self.backVideoDataOutput);
   if (!isFrontOutput && !isBackOutput) return;
+
+  static BOOL didLogFrontSample = NO;
+  static BOOL didLogBackSample = NO;
+  BOOL shouldLogSample = (isFrontOutput && !didLogFrontSample) || (isBackOutput && !didLogBackSample);
+  if (shouldLogSample) {
+    if (isFrontOutput) didLogFrontSample = YES;
+    if (isBackOutput) didLogBackSample = YES;
+
+    CMFormatDescriptionRef formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer);
+    NSDictionary *formatExtensions = formatDescription
+      ? (__bridge NSDictionary *)CMFormatDescriptionGetExtensions(formatDescription)
+      : nil;
+    OSType pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
+    size_t width = CVPixelBufferGetWidth(pixelBuffer);
+    size_t height = CVPixelBufferGetHeight(pixelBuffer);
+    id colorPrimaries = DualCameraBufferAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey);
+    id transferFunction = DualCameraBufferAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey);
+    id ycbcrMatrix = DualCameraBufferAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey);
+    id cgColorSpace = DualCameraBufferAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey);
+    NSLog(@"[DualCamera][QualityDiag] %@ sample pixelFormat=%@ size=%zux%zu bufferCS=%@ primaries=%@ transfer=%@ matrix=%@ formatExtensions=%@",
+          isFrontOutput ? @"front" : @"back",
+          DualCameraCaptureFourCCString(pixelFormat),
+          width,
+          height,
+          cgColorSpace ?: @"nil",
+          colorPrimaries ?: @"nil",
+          transferFunction ?: @"nil",
+          ycbcrMatrix ?: @"nil",
+          formatExtensions ?: @{});
+  }
 
   // Store raw frames (WYSIWYG: save what preview shows — mirroring applied at compositing time)
   if (isFrontOutput) {

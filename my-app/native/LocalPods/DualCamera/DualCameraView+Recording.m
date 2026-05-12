@@ -9,6 +9,22 @@ static CGColorSpaceRef DualCameraCreateRealtimeVideoColorSpace(void) {
   return colorSpace;
 }
 
+static NSString *DualCameraRecordingFourCCString(OSType code) {
+  char chars[5] = {
+    (char)((code >> 24) & 0xff),
+    (char)((code >> 16) & 0xff),
+    (char)((code >> 8) & 0xff),
+    (char)(code & 0xff),
+    0
+  };
+  return [NSString stringWithFormat:@"%s/%u", chars, (unsigned int)code];
+}
+
+static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef key) {
+  if (!buffer || !key) return nil;
+  return (__bridge id)CVBufferGetAttachment(buffer, key, NULL);
+}
+
 @implementation DualCameraView (Recording)
 
 #pragma mark - State machine
@@ -239,6 +255,15 @@ static CGColorSpaceRef DualCameraCreateRealtimeVideoColorSpace(void) {
   NSDictionary *videoSettings = useWarmSettings
     ? self.warmedRealtimeVideoSettings
     : [self realtimeVideoSettingsForOutputSize:outputSize];
+  NSDictionary *frontRecommendedSettings = self.frontVideoDataOutput
+    ? [self.frontVideoDataOutput recommendedVideoSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4]
+    : nil;
+  NSDictionary *backRecommendedSettings = self.backVideoDataOutput
+    ? [self.backVideoDataOutput recommendedVideoSettingsForAssetWriterWithOutputFileType:AVFileTypeMPEG4]
+    : nil;
+  NSLog(@"[DualCamera][QualityDiag] writer current videoSettings=%@", videoSettings ?: @{});
+  NSLog(@"[DualCamera][QualityDiag] writer recommended front=%@", frontRecommendedSettings ?: @{});
+  NSLog(@"[DualCamera][QualityDiag] writer recommended back=%@", backRecommendedSettings ?: @{});
   AVAssetWriterInput *videoInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
   videoInput.expectsMediaDataInRealTime = YES;
   videoInput.transform = CGAffineTransformIdentity;
@@ -386,6 +411,8 @@ static CGColorSpaceRef DualCameraCreateRealtimeVideoColorSpace(void) {
     id colorPrimaries = (__bridge id)CVBufferGetAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, NULL);
     id transferFunction = (__bridge id)CVBufferGetAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey, NULL);
     id ycbcrMatrix = (__bridge id)CVBufferGetAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, NULL);
+    OSType outputPixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer);
+    id outputColorSpace = DualCameraRecordingBufferAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey);
     NSLog(@"[DualCamera] Realtime first frame front=%.0fx%.0f back=%.0fx%.0f output=%.0fx%.0f bitrate=%@ colorPrimaries=%@ transfer=%@ matrix=%@",
           frontFrame.extent.size.width,
           frontFrame.extent.size.height,
@@ -397,6 +424,14 @@ static CGColorSpaceRef DualCameraCreateRealtimeVideoColorSpace(void) {
           colorPrimaries ?: @"unknown",
           transferFunction ?: @"unknown",
           ycbcrMatrix ?: @"unknown");
+    NSLog(@"[DualCamera][QualityDiag] output pixelBuffer pixelFormat=%@ size=%zux%zu colorSpace=%@ primaries=%@ transfer=%@ matrix=%@",
+          DualCameraRecordingFourCCString(outputPixelFormat),
+          CVPixelBufferGetWidth(pixelBuffer),
+          CVPixelBufferGetHeight(pixelBuffer),
+          outputColorSpace ?: @"nil",
+          colorPrimaries ?: @"nil",
+          transferFunction ?: @"nil",
+          ycbcrMatrix ?: @"nil");
   }
   [self.ciContext render:composited
          toCVPixelBuffer:pixelBuffer

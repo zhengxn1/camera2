@@ -46,6 +46,7 @@
     kCIContextWorkingColorSpace: (__bridge id)srgb,
     kCIContextOutputColorSpace: (__bridge id)srgb
   }];
+  NSLog(@"[DualCamera][QualityDiag] CIContext workingColorSpace=sRGB outputColorSpace=sRGB softwareRenderer=NO");
   CGColorSpaceRelease(srgb);
   // Default values for layout/PiP/zoom properties (declared in .h for React Native)
   _dualLayoutRatio = 0.5;

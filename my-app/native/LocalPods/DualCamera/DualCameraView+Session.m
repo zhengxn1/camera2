@@ -1,6 +1,17 @@
 #import "DualCameraView+Session.h"
 #import "DualCameraView_Internal.h"
 
+static NSString *DualCameraFourCCString(OSType code) {
+  char chars[5] = {
+    (char)((code >> 24) & 0xff),
+    (char)((code >> 16) & 0xff),
+    (char)((code >> 8) & 0xff),
+    (char)(code & 0xff),
+    0
+  };
+  return [NSString stringWithFormat:@"%s/%u", chars, (unsigned int)code];
+}
+
 @implementation DualCameraView (Session)
 
 #pragma mark - Lifecycle
@@ -223,7 +234,11 @@
   // VideoDataOutput — front camera (WYSIWYG frames for compositing)
   if (ok) {
     self.frontVideoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
+    NSLog(@"[DualCamera][QualityDiag] front available pixel formats=%@",
+          [self.frontVideoDataOutput.availableVideoPixelFormatTypes valueForKey:@"description"]);
     self.frontVideoDataOutput.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
+    NSLog(@"[DualCamera][QualityDiag] front selected pixel format=%@",
+          DualCameraFourCCString(kCVPixelFormatType_32BGRA));
     self.frontVideoDataOutput.alwaysDiscardsLateVideoFrames = YES;
     [self.frontVideoDataOutput setSampleBufferDelegate:self queue:self.videoDataOutputQueue];
     if ([self.multiCamSession canAddOutput:self.frontVideoDataOutput]) {
@@ -248,7 +263,11 @@
   // VideoDataOutput — back camera
   if (ok) {
     self.backVideoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
+    NSLog(@"[DualCamera][QualityDiag] back available pixel formats=%@",
+          [self.backVideoDataOutput.availableVideoPixelFormatTypes valueForKey:@"description"]);
     self.backVideoDataOutput.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
+    NSLog(@"[DualCamera][QualityDiag] back selected pixel format=%@",
+          DualCameraFourCCString(kCVPixelFormatType_32BGRA));
     self.backVideoDataOutput.alwaysDiscardsLateVideoFrames = YES;
     [self.backVideoDataOutput setSampleBufferDelegate:self queue:self.videoDataOutputQueue];
     if ([self.multiCamSession canAddOutput:self.backVideoDataOutput]) {
@@ -697,8 +716,13 @@
   if (format) {
     device.activeFormat = format;
     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
+    NSDictionary *extensions = (__bridge NSDictionary *)CMFormatDescriptionGetExtensions(format.formatDescription);
     NSLog(@"[DualCamera] Selected multicam format position=%ld dimensions=%dx%d",
           (long)device.position, dimensions.width, dimensions.height);
+    NSLog(@"[DualCamera][QualityDiag] activeFormat position=%ld mediaSubType=%@ extensions=%@",
+          (long)device.position,
+          DualCameraFourCCString(CMFormatDescriptionGetMediaSubType(format.formatDescription)),
+          extensions ?: @{});
   }
   device.activeVideoMinFrameDuration = CMTimeMake(1, 30);
   device.activeVideoMaxFrameDuration = CMTimeMake(1, 30);
