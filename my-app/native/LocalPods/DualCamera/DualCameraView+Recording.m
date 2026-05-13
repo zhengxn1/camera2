@@ -29,6 +29,14 @@ static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef ke
 
 #pragma mark - State machine
 
+- (NSNumber *)realtimeVideoBitRateForOutputSize:(CGSize)outputSize {
+  CGFloat pixels = MAX(1.0, outputSize.width * outputSize.height);
+  CGFloat fullPortraitPixels = 1080.0 * 1920.0;
+  NSInteger bitRate = (NSInteger)llround(30000000.0 * (pixels / fullPortraitPixels));
+  bitRate = MAX(18000000, MIN(42000000, bitRate));
+  return @(bitRate);
+}
+
 - (NSDictionary *)realtimeVideoSettingsForOutputSize:(CGSize)outputSize {
   return @{
     AVVideoCodecKey: AVVideoCodecTypeH264,
@@ -40,7 +48,7 @@ static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef ke
       AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2
     },
     AVVideoCompressionPropertiesKey: @{
-      AVVideoAverageBitRateKey: @(20000000),
+      AVVideoAverageBitRateKey: [self realtimeVideoBitRateForOutputSize:outputSize],
       AVVideoExpectedSourceFrameRateKey: @(30),
       AVVideoMaxKeyFrameIntervalKey: @(30),
       AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
