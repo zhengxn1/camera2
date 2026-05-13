@@ -269,7 +269,7 @@
 }
 
 - (CGSize)realtimeRecordingOutputSizeForAspectRatio:(NSString *)aspectRatio landscape:(BOOL)landscape {
-  return [self outputSizeForAspectRatio:aspectRatio referenceWidth:1080.0 landscape:landscape];
+  return [self outputSizeForAspectRatio:aspectRatio referenceWidth:1440.0 landscape:landscape];
 }
 
 #pragma mark - AVFoundation layer helper
