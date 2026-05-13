@@ -235,7 +235,7 @@ static NSString *DualCameraFourCCString(OSType code) {
   if (ok) {
     self.frontVideoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
     NSLog(@"[DualCamera][QualityDiag] front available pixel formats=%@",
-          [self.frontVideoDataOutput.availableVideoPixelFormatTypes valueForKey:@"description"]);
+          [self.frontVideoDataOutput.availableVideoCVPixelFormatTypes valueForKey:@"description"]);
     self.frontVideoDataOutput.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
     NSLog(@"[DualCamera][QualityDiag] front selected pixel format=%@",
           DualCameraFourCCString(kCVPixelFormatType_32BGRA));
@@ -264,7 +264,7 @@ static NSString *DualCameraFourCCString(OSType code) {
   if (ok) {
     self.backVideoDataOutput = [[AVCaptureVideoDataOutput alloc] init];
     NSLog(@"[DualCamera][QualityDiag] back available pixel formats=%@",
-          [self.backVideoDataOutput.availableVideoPixelFormatTypes valueForKey:@"description"]);
+          [self.backVideoDataOutput.availableVideoCVPixelFormatTypes valueForKey:@"description"]);
     self.backVideoDataOutput.videoSettings = @{(id)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA)};
     NSLog(@"[DualCamera][QualityDiag] back selected pixel format=%@",
           DualCameraFourCCString(kCVPixelFormatType_32BGRA));
