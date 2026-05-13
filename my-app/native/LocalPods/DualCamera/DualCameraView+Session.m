@@ -759,6 +759,17 @@ static NSString *DualCameraFourCCString(OSType code) {
   if ([device isExposureModeSupported:AVCaptureExposureModeContinuousAutoExposure]) {
     device.exposureMode = AVCaptureExposureModeContinuousAutoExposure;
   }
+  CGFloat targetBias = (device.position == AVCaptureDevicePositionBack) ? 0.3 : 0.2;
+  targetBias = MAX(device.minExposureTargetBias, MIN(device.maxExposureTargetBias, targetBias));
+  [device setExposureTargetBias:targetBias completionHandler:nil];
+  NSLog(@"[DualCamera][QualityDiag] exposure position=%ld bias=%.2f min=%.2f max=%.2f offset=%.2f ISO=%.1f duration=%.4f",
+        (long)device.position,
+        device.exposureTargetBias,
+        device.minExposureTargetBias,
+        device.maxExposureTargetBias,
+        device.exposureTargetOffset,
+        device.ISO,
+        CMTimeGetSeconds(device.exposureDuration));
   [device unlockForConfiguration];
   return YES;
 }
