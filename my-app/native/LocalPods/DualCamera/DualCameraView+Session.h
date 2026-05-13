@@ -50,6 +50,8 @@
 - (AVCaptureDevice *)cameraDeviceForPosition:(AVCaptureDevicePosition)position;
 - (BOOL)configureDeviceForMultiCam:(AVCaptureDevice *)device error:(NSError **)error;
 - (AVCaptureDeviceFormat *)bestMultiCamFormatForDevice:(AVCaptureDevice *)device;
+- (BOOL)formatIsPreferredSDR:(AVCaptureDeviceFormat *)format;
+- (BOOL)formatLooksHDR:(AVCaptureDeviceFormat *)format;
 - (BOOL)formatSupportsThirtyFps:(AVCaptureDeviceFormat *)format;
 - (AVCaptureInputPort *)videoPortForInput:(AVCaptureDeviceInput *)input;
 

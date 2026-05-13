@@ -717,13 +717,30 @@ static NSString *DualCameraFourCCString(OSType code) {
     device.activeFormat = format;
     CMVideoDimensions dimensions = CMVideoFormatDescriptionGetDimensions(format.formatDescription);
     NSDictionary *extensions = (__bridge NSDictionary *)CMFormatDescriptionGetExtensions(format.formatDescription);
-    NSLog(@"[DualCamera] Selected multicam format position=%ld dimensions=%dx%d",
-          (long)device.position, dimensions.width, dimensions.height);
-    NSLog(@"[DualCamera][QualityDiag] activeFormat position=%ld mediaSubType=%@ extensions=%@",
+    NSLog(@"[DualCamera] Selected multicam format position=%ld dimensions=%dx%d sdrPreferred=%d hdrLike=%d",
+          (long)device.position,
+          dimensions.width,
+          dimensions.height,
+          [self formatIsPreferredSDR:format],
+          [self formatLooksHDR:format]);
+    NSLog(@"[DualCamera][QualityDiag] activeFormat position=%ld mediaSubType=%@ videoHDRSupported=%d extensions=%@",
           (long)device.position,
           DualCameraFourCCString(CMFormatDescriptionGetMediaSubType(format.formatDescription)),
+          format.videoHDRSupported,
           extensions ?: @{});
   }
+
+  if ([device respondsToSelector:@selector(setAutomaticallyAdjustsVideoHDREnabled:)]) {
+    device.automaticallyAdjustsVideoHDREnabled = NO;
+  }
+  if ([device respondsToSelector:@selector(setVideoHDREnabled:)] && device.activeFormat.videoHDRSupported) {
+    device.videoHDREnabled = NO;
+  }
+  NSLog(@"[DualCamera][QualityDiag] HDR disabled position=%ld autoHDR=%d videoHDR=%d",
+        (long)device.position,
+        device.automaticallyAdjustsVideoHDREnabled,
+        device.videoHDREnabled);
+
   device.activeVideoMinFrameDuration = CMTimeMake(1, 30);
   device.activeVideoMaxFrameDuration = CMTimeMake(1, 30);
 
@@ -750,6 +767,7 @@ static NSString *DualCameraFourCCString(OSType code) {
   AVCaptureDeviceFormat *bestFormat = nil;
   int32_t bestArea = 0;
   NSInteger bestTier = -1;
+  NSInteger bestSDRTier = -1;
 
   for (AVCaptureDeviceFormat *format in device.formats) {
     if (![format isMultiCamSupported] || ![self formatSupportsThirtyFps:format]) {
@@ -767,16 +785,46 @@ static NSString *DualCameraFourCCString(OSType code) {
       tier = 1;
     }
 
+    NSInteger sdrTier = [self formatIsPreferredSDR:format] ? 2 : ([self formatLooksHDR:format] ? 0 : 1);
+
     if (!bestFormat ||
-        tier > bestTier ||
-        (tier == bestTier && area > bestArea)) {
+        sdrTier > bestSDRTier ||
+        (sdrTier == bestSDRTier && tier > bestTier) ||
+        (sdrTier == bestSDRTier && tier == bestTier && area > bestArea)) {
       bestFormat = format;
       bestArea = area;
       bestTier = tier;
+      bestSDRTier = sdrTier;
     }
   }
 
   return bestFormat;
+}
+
+- (BOOL)formatIsPreferredSDR:(AVCaptureDeviceFormat *)format {
+  OSType mediaSubType = CMFormatDescriptionGetMediaSubType(format.formatDescription);
+  return mediaSubType == kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange ||
+         mediaSubType == kCVPixelFormatType_420YpCbCr8BiPlanarFullRange ||
+         mediaSubType == kCVPixelFormatType_32BGRA;
+}
+
+- (BOOL)formatLooksHDR:(AVCaptureDeviceFormat *)format {
+  OSType mediaSubType = CMFormatDescriptionGetMediaSubType(format.formatDescription);
+  if (mediaSubType != kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange &&
+      mediaSubType != kCVPixelFormatType_420YpCbCr8BiPlanarFullRange &&
+      mediaSubType != kCVPixelFormatType_32BGRA) {
+    return YES;
+  }
+
+  NSDictionary *extensions = (__bridge NSDictionary *)CMFormatDescriptionGetExtensions(format.formatDescription);
+  NSString *primaries = [extensions[(id)kCVImageBufferColorPrimariesKey] description] ?: @"";
+  NSString *transfer = [extensions[(id)kCVImageBufferTransferFunctionKey] description] ?: @"";
+  NSString *matrix = [extensions[(id)kCVImageBufferYCbCrMatrixKey] description] ?: @"";
+  return [primaries containsString:@"2020"] ||
+         [transfer containsString:@"2100"] ||
+         [transfer containsString:@"HLG"] ||
+         [transfer containsString:@"PQ"] ||
+         [matrix containsString:@"2020"];
 }
 
 - (BOOL)formatSupportsThirtyFps:(AVCaptureDeviceFormat *)format {
