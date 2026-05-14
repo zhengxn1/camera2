@@ -735,8 +735,12 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
   if ([device respondsToSelector:@selector(setAutomaticallyAdjustsVideoHDREnabled:)]) {
     device.automaticallyAdjustsVideoHDREnabled = DualCameraHDRDebugEnabled;
   }
+  // Only call setVideoHDREnabled: when automaticallyAdjustsVideoHDREnabled is NO
+  // iOS throws NSGenericException if you call setVideoHDREnabled: while auto-adjust is ON
   if ([device respondsToSelector:@selector(setVideoHDREnabled:)] && device.activeFormat.videoHDRSupported) {
-    device.videoHDREnabled = DualCameraHDRDebugEnabled;
+    if (!device.automaticallyAdjustsVideoHDREnabled) {
+      device.videoHDREnabled = DualCameraHDRDebugEnabled;
+    }
   }
   NSLog(@"[DualCamera][QualityDiag] HDR debug=%d position=%ld autoHDR=%d videoHDR=%d activeColorSpace=%ld",
         DualCameraHDRDebugEnabled,
