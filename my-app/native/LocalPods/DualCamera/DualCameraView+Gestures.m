@@ -1,5 +1,6 @@
 #import "DualCameraView+Gestures.h"
 #import "DualCameraView_Internal.h"
+#import "DualCameraView+Layout.h"
 
 @implementation DualCameraView (Gestures)
 
@@ -36,6 +37,8 @@
 
 - (void)handlePipPan:(UIPanGestureRecognizer *)pan {
   UIView *pipView = [self pipPreviewView];
+  CGRect canvas = [self canvasBoundsForAspectRatio];
+  if (canvas.size.width <= 0 || canvas.size.height <= 0) return;
   CGPoint translation = [pan translationInView:self];
   CGPoint center = pipView.center;
   center.x += translation.x;
@@ -43,14 +46,18 @@
 
   CGFloat halfW = pipView.bounds.size.width / 2;
   CGFloat halfH = pipView.bounds.size.height / 2;
-  center.x = MAX(halfW, MIN(self.bounds.size.width - halfW, center.x));
-  center.y = MAX(halfH, MIN(self.bounds.size.height - halfH, center.y));
+  CGFloat minX = canvas.origin.x + halfW;
+  CGFloat maxX = CGRectGetMaxX(canvas) - halfW;
+  CGFloat minY = canvas.origin.y + halfH;
+  CGFloat maxY = CGRectGetMaxY(canvas) - halfH;
+  center.x = MAX(minX, MIN(maxX, center.x));
+  center.y = MAX(minY, MIN(maxY, center.y));
 
   pipView.center = center;
   [pan setTranslation:CGPointZero inView:self];
 
-  self.pipPositionX = center.x / self.bounds.size.width;
-  self.pipPositionY = center.y / self.bounds.size.height;
+  self.pipPositionX = (center.x - canvas.origin.x) / canvas.size.width;
+  self.pipPositionY = (center.y - canvas.origin.y) / canvas.size.height;
 
   if (pan.state == UIGestureRecognizerStateEnded) {
     [[DualCameraEventEmitter shared] sendPipPositionChanged:self.pipPositionX y:self.pipPositionY];

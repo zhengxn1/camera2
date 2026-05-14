@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { CAMERA_MODE, type CameraMode, type CameraSide, INTERACTION_TOP } from '../constants';
+import { CAMERA_MODE, type AspectRatio, type CameraMode, type CameraSide, INTERACTION_TOP } from '../constants';
 import { styles } from '../styles';
 import { clamp } from '../utils';
 import { AreaDivider } from './AreaDivider';
@@ -12,6 +12,7 @@ export interface PipPosition {
 
 interface CameraControlsOverlayProps {
   cameraMode: CameraMode;
+  aspect: AspectRatio;
   isFlipped: boolean;
   dualLayoutRatio: number;
   onDualLayoutRatioChange: (ratio: number) => void;
@@ -26,6 +27,7 @@ interface CameraControlsOverlayProps {
 
 function CameraControlsOverlayImpl({
   cameraMode,
+  aspect,
   isFlipped,
   dualLayoutRatio,
   onDualLayoutRatioChange,
@@ -157,12 +159,32 @@ function CameraControlsOverlayImpl({
   // PIP modes
   const mainCamera: CameraSide = isFlipped ? 'front' : 'back';
   const pipCamera: CameraSide = isFlipped ? 'back' : 'front';
-  // PIP is a square whose side = pipSize * screenWidth (mirrors native updateLayout).
-  const pipSizePx = pipSize * screenWidth;
+  let canvasWidth = screenWidth;
+  let canvasHeight = screenHeight;
+  if (aspect === '9:16') {
+    canvasHeight = canvasWidth * 16 / 9;
+    if (canvasHeight > screenHeight) {
+      canvasHeight = screenHeight;
+      canvasWidth = canvasHeight * 9 / 16;
+    }
+  } else if (aspect === '3:4') {
+    canvasHeight = canvasWidth * 4 / 3;
+    if (canvasHeight > screenHeight) {
+      canvasHeight = screenHeight;
+      canvasWidth = canvasHeight * 3 / 4;
+    }
+  } else if (aspect === '1:1') {
+    canvasWidth = Math.min(screenWidth, screenHeight);
+    canvasHeight = canvasWidth;
+  }
+  const canvasLeft = (screenWidth - canvasWidth) / 2;
+  const canvasTop = (screenHeight - canvasHeight) / 2;
+  // PIP is a square whose side = pipSize * canvasWidth (mirrors native updateLayout).
+  const pipSizePx = pipSize * canvasWidth;
   const pipBtnWidth = Math.max(92, pipSizePx - 16);
-  // pipPosition.{x,y} are fractions of the native view bounds (updated by pan gesture).
-  const pipCenterX = pipPosition.x * screenWidth;
-  const pipCenterY = pipPosition.y * screenHeight;
+  // pipPosition.{x,y} are fractions of the native camera canvas.
+  const pipCenterX = canvasLeft + pipPosition.x * canvasWidth;
+  const pipCenterY = canvasTop + pipPosition.y * canvasHeight;
   const pipLeft = clamp(pipCenterX - pipBtnWidth / 2, 8, screenWidth - pipBtnWidth - 8);
   const pipTop = clamp(pipCenterY + pipSizePx / 2 + 4, INTERACTION_TOP, screenHeight - 132);
 

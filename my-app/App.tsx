@@ -134,6 +134,7 @@ export default function App() {
       {!session.interactionDisabled && screen.width > 0 ? (
         <CameraControlsOverlay
           cameraMode={cameraMode}
+          aspect={aspect}
           isFlipped={isFlipped}
           dualLayoutRatio={dualLayoutRatio}
           onDualLayoutRatioChange={setDualLayoutRatio}

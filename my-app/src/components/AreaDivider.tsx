@@ -17,25 +17,43 @@ interface AreaDividerProps {
 function AreaDividerImpl({ mode, ratio, onRatioChange, screenWidth, screenHeight }: AreaDividerProps) {
   const [active, setActive] = useState(false);
   const latestRatioRef = useRef(ratio);
-  const startRatioRef = useRef(ratio);
+  const modeRef = useRef(mode);
+  const screenWidthRef = useRef(screenWidth);
+  const screenHeightRef = useRef(screenHeight);
   const limitMin = 0.2;
   const limitMax = 0.8;
   latestRatioRef.current = ratio;
+  modeRef.current = mode;
+  screenWidthRef.current = screenWidth;
+  screenHeightRef.current = screenHeight;
+
+  const ratioFromGesture = (gesture: { moveX: number; moveY: number; dx: number; dy: number }) => {
+    if (modeRef.current === 'lr') {
+      const width = Math.max(1, screenWidthRef.current);
+      const position = Number.isFinite(gesture.moveX) && gesture.moveX > 0
+        ? gesture.moveX
+        : latestRatioRef.current * width + gesture.dx;
+      return clamp(position / width, limitMin, limitMax);
+    }
+
+    const height = Math.max(1, screenHeightRef.current);
+    const position = Number.isFinite(gesture.moveY) && gesture.moveY > 0
+      ? gesture.moveY
+      : latestRatioRef.current * height + gesture.dy;
+    return clamp(position / height, limitMin, limitMax);
+  };
 
   const panResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
     onPanResponderGrant: () => {
-      startRatioRef.current = latestRatioRef.current;
       setActive(true);
     },
     onPanResponderMove: (_, gesture) => {
-      const delta = mode === 'lr' ? gesture.dx / screenWidth : gesture.dy / screenHeight;
-      onRatioChange(clamp(startRatioRef.current + delta, limitMin, limitMax));
+      onRatioChange(ratioFromGesture(gesture));
     },
     onPanResponderRelease: (_, gesture) => {
-      const delta = mode === 'lr' ? gesture.dx / screenWidth : gesture.dy / screenHeight;
-      const raw = clamp(startRatioRef.current + delta, limitMin, limitMax);
+      const raw = ratioFromGesture(gesture);
       const nearest = SNAP_POINTS.reduce((best, point) => (
         Math.abs(point - raw) < Math.abs(best - raw) ? point : best
       ), raw);
