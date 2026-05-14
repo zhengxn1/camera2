@@ -25,6 +25,8 @@ static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef ke
   return (__bridge id)CVBufferGetAttachment(buffer, key, NULL);
 }
 
+static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
+
 @implementation DualCameraView (Recording)
 
 #pragma mark - State machine
@@ -75,6 +77,15 @@ static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef ke
     AVNumberOfChannelsKey: @(1),
     AVEncoderBitRateKey: @(128000)
   };
+}
+
+- (CIImage *)realtimeOutputAdjustedImage:(CIImage *)image {
+  if (!image || DualCameraHDRDebugOutputExposureEV == 0) return image;
+
+  CIFilter *exposure = [CIFilter filterWithName:@"CIExposureAdjust"];
+  [exposure setValue:image forKey:kCIInputImageKey];
+  [exposure setValue:@(DualCameraHDRDebugOutputExposureEV) forKey:kCIInputEVKey];
+  return exposure.outputImage ?: image;
 }
 
 - (BOOL)canUseWarmedRealtimePipelineForAspectRatio:(NSString *)aspectRatio
@@ -392,6 +403,7 @@ static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef ke
     self.realtimeDroppedFrameCount += 1;
     return;
   }
+  composited = [self realtimeOutputAdjustedImage:composited];
 
   if (![self ensureRealtimeWriterStartedAtTime:time]) return;
   if (!self.realtimeVideoInput.isReadyForMoreMediaData) {
