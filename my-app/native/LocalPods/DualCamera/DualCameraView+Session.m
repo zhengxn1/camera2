@@ -12,6 +12,8 @@ static NSString *DualCameraFourCCString(OSType code) {
   return [NSString stringWithFormat:@"%s/%u", chars, (unsigned int)code];
 }
 
+static const BOOL DualCameraHDRDebugEnabled = YES;
+
 @implementation DualCameraView (Session)
 
 #pragma mark - Lifecycle
@@ -731,15 +733,17 @@ static NSString *DualCameraFourCCString(OSType code) {
   }
 
   if ([device respondsToSelector:@selector(setAutomaticallyAdjustsVideoHDREnabled:)]) {
-    device.automaticallyAdjustsVideoHDREnabled = NO;
+    device.automaticallyAdjustsVideoHDREnabled = DualCameraHDRDebugEnabled;
   }
   if ([device respondsToSelector:@selector(setVideoHDREnabled:)] && device.activeFormat.videoHDRSupported) {
-    device.videoHDREnabled = NO;
+    device.videoHDREnabled = DualCameraHDRDebugEnabled;
   }
-  NSLog(@"[DualCamera][QualityDiag] HDR disabled position=%ld autoHDR=%d videoHDR=%d",
+  NSLog(@"[DualCamera][QualityDiag] HDR debug=%d position=%ld autoHDR=%d videoHDR=%d activeColorSpace=%ld",
+        DualCameraHDRDebugEnabled,
         (long)device.position,
         device.automaticallyAdjustsVideoHDREnabled,
-        device.videoHDREnabled);
+        device.videoHDREnabled,
+        (long)device.activeColorSpace);
 
   device.activeVideoMinFrameDuration = CMTimeMake(1, 30);
   device.activeVideoMaxFrameDuration = CMTimeMake(1, 30);
@@ -796,7 +800,9 @@ static NSString *DualCameraFourCCString(OSType code) {
       tier = 1;
     }
 
-    NSInteger sdrTier = [self formatIsPreferredSDR:format] ? 2 : ([self formatLooksHDR:format] ? 0 : 1);
+    NSInteger sdrTier = DualCameraHDRDebugEnabled
+      ? ([self formatLooksHDR:format] ? 2 : (format.videoHDRSupported ? 1 : 0))
+      : ([self formatIsPreferredSDR:format] ? 2 : ([self formatLooksHDR:format] ? 0 : 1));
 
     if (!bestFormat ||
         sdrTier > bestSDRTier ||
