@@ -24,8 +24,7 @@ ZoomDialOverlay.displayName = 'ZoomDialOverlay';
  *
  * Display modes chosen from availableWidth (px):
  *   normal  - full-size 36 px buttons (default when no constraint)
- *   compact - small 28 px buttons (medium columns / PIP overlay)
- *   mini    - single badge showing current zoom; tap cycles presets (very narrow columns)
+ *   narrow  - two full-size buttons: active preset + next preset cycle
  *   hidden  - nothing rendered (< 44 px)
  */
 interface ZoomDialProps {
@@ -44,18 +43,22 @@ function ZoomDialImpl({ camera, currentZoom, onZoomChange, availableWidth = Infi
   const max = camera === 'back' ? 5 : 2;
   latestZoomRef.current = currentZoom;
 
-  // Pixel width required for each mode's button row (buttons + gaps + horizontal padding).
+  const formatZoomLabel = (level: number) => (
+    level < 1 ? level.toFixed(1) : String(+(level.toFixed(1))).replace(/\.0$/, '')
+  );
+  const nearestLevel = levels.reduce((best, level) =>
+    Math.abs(level - currentZoom) < Math.abs(best - currentZoom) ? level : best, levels[0]);
+  const nextLevel = levels[(levels.indexOf(nearestLevel) + 1) % levels.length];
+
+  // Pixel width required for the full button row (buttons + gaps + horizontal padding).
   const n = levels.length;
   const normalMinW  = n * 36 + (n - 1) * 6 + 16;  // e.g. back=220, front=94
-  const compactMinW = n * 28 + (n - 1) * 4 + 10;  // e.g. back=166, front=74
 
-  const mode: 'normal' | 'compact' | 'mini' | 'hidden' =
+  const mode: 'normal' | 'narrow' | 'hidden' =
     availableWidth >= normalMinW  ? 'normal'  :
-    availableWidth >= compactMinW ? 'compact' :
-    availableWidth >= 44          ? 'mini'    : 'hidden';
+    availableWidth >= 44          ? 'narrow'  : 'hidden';
 
-  const isCompact = mode === 'compact';
-  const sliderWidth = isCompact ? 116 : 180;
+  const sliderWidth = 180;
 
   const sliderPanResponder = useRef(PanResponder.create({
     onStartShouldSetPanResponder: () => true,
@@ -71,28 +74,35 @@ function ZoomDialImpl({ camera, currentZoom, onZoomChange, availableWidth = Infi
 
   if (mode === 'hidden') return null;
 
-  // Mini mode: single badge, tap cycles to next preset level.
-  if (mode === 'mini') {
-    const nearest = levels.reduce((b, l) =>
-      Math.abs(l - currentZoom) < Math.abs(b - currentZoom) ? l : b, levels[0]);
-    const nextLevel = levels[(levels.indexOf(nearest) + 1) % levels.length];
-    const label = currentZoom < 1
-      ? currentZoom.toFixed(1)
-      : String(+(currentZoom.toFixed(1))).replace(/\.0$/, '');
+  if (mode === 'narrow') {
     return (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${camera} ${label}x zoom`}
-        style={styles.zoomMiniBadge}
-        onPress={() => onZoomChange(camera, nextLevel)}
-      >
-        <Text style={styles.zoomMiniBadgeText}>{label}x</Text>
-      </Pressable>
+      <View style={styles.zoomDial}>
+        <View style={styles.zoomPresetRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${camera} ${formatZoomLabel(nearestLevel)}x zoom selected`}
+            style={[styles.zoomPreset, styles.zoomPresetActive]}
+            onPress={() => onZoomChange(camera, nearestLevel)}
+          >
+            <Text style={[styles.zoomPresetText, styles.zoomPresetTextActive]}>
+              {formatZoomLabel(nearestLevel)}x
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${camera} switch to ${formatZoomLabel(nextLevel)}x zoom`}
+            style={styles.zoomPreset}
+            onPress={() => onZoomChange(camera, nextLevel)}
+          >
+            <Text style={styles.zoomPresetText}>{formatZoomLabel(nextLevel)}x</Text>
+          </Pressable>
+        </View>
+      </View>
     );
   }
 
   return (
-    <View style={[styles.zoomDial, isCompact && styles.zoomDialCompact]}>
+    <View style={styles.zoomDial}>
       <View style={styles.zoomPresetRow}>
         {levels.map(level => {
           const active = Math.abs(currentZoom - level) < 0.05;
@@ -101,13 +111,13 @@ function ZoomDialImpl({ camera, currentZoom, onZoomChange, availableWidth = Infi
               key={level}
               accessibilityRole="button"
               accessibilityLabel={`${camera} ${level}x zoom`}
-              style={[styles.zoomPreset, isCompact && styles.zoomPresetCompact, active && styles.zoomPresetActive]}
+              style={[styles.zoomPreset, active && styles.zoomPresetActive]}
               onPress={() => onZoomChange(camera, level)}
               onLongPress={() => setExpanded(true)}
               delayLongPress={260}
             >
-              <Text style={[styles.zoomPresetText, isCompact && styles.zoomPresetTextCompact, active && styles.zoomPresetTextActive]}>
-                {level}x
+              <Text style={[styles.zoomPresetText, active && styles.zoomPresetTextActive]}>
+                {formatZoomLabel(level)}x
               </Text>
             </Pressable>
           );
