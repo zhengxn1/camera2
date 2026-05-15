@@ -1,5 +1,6 @@
 import { memo } from 'react';
-import { CAMERA_MODE, type AspectRatio, type CameraMode, type CameraSide, INTERACTION_TOP } from '../constants';
+import { type StyleProp, type ViewStyle } from 'react-native';
+import { CAMERA_MODE, type AspectRatio, type CameraMode, type CameraSide } from '../constants';
 import { styles } from '../styles';
 import { clamp } from '../utils';
 import { AreaDivider } from './AreaDivider';
@@ -8,6 +9,13 @@ import { ZoomDial, ZoomDialOverlay } from './ZoomDial';
 export interface PipPosition {
   x: number;
   y: number;
+}
+
+interface PreviewRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
 }
 
 interface CameraControlsOverlayProps {
@@ -25,6 +33,83 @@ interface CameraControlsOverlayProps {
   onZoomChange: (camera: CameraSide, level: number) => void;
 }
 
+const ZOOM_PILL_W = 48;
+const ZOOM_PILL_H = 32;
+const ZOOM_PILL_COMPACT_W = 40;
+const ZOOM_PILL_COMPACT_H = 28;
+
+function canvasRectForAspect(aspect: AspectRatio, screenWidth: number, screenHeight: number): PreviewRect {
+  let width = screenWidth;
+  let height = screenHeight;
+
+  if (aspect === '9:16') {
+    height = width * 16 / 9;
+    if (height > screenHeight) {
+      height = screenHeight;
+      width = height * 9 / 16;
+    }
+  } else if (aspect === '3:4') {
+    height = width * 4 / 3;
+    if (height > screenHeight) {
+      height = screenHeight;
+      width = height * 3 / 4;
+    }
+  } else if (aspect === '1:1') {
+    width = Math.min(screenWidth, screenHeight);
+    height = width;
+  }
+
+  return {
+    left: (screenWidth - width) / 2,
+    top: (screenHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
+function zoomPositionForRect(rect: PreviewRect): { style: StyleProp<ViewStyle>; compact: boolean } {
+  const compact = rect.width < 96 || rect.height < 96;
+  const width = compact ? ZOOM_PILL_COMPACT_W : ZOOM_PILL_W;
+  const height = compact ? ZOOM_PILL_COMPACT_H : ZOOM_PILL_H;
+  const bottomInset = compact ? 8 : 14;
+  const minTop = rect.top + 4;
+  const maxTop = rect.top + rect.height - height - 4;
+  const targetTop = rect.top + rect.height - height - bottomInset;
+  const top = maxTop >= minTop ? clamp(targetTop, minTop, maxTop) : rect.top + Math.max(0, (rect.height - height) / 2);
+
+  return {
+    compact,
+    style: {
+      left: rect.left + rect.width / 2 - width / 2,
+      top,
+      width,
+      height,
+    },
+  };
+}
+
+function renderZoom(
+  camera: CameraSide,
+  rect: PreviewRect,
+  backZoom: number,
+  frontZoom: number,
+  onZoomChange: (camera: CameraSide, level: number) => void,
+) {
+  if (rect.width <= 0 || rect.height <= 0) return null;
+  const { style, compact } = zoomPositionForRect(rect);
+
+  return (
+    <ZoomDialOverlay key={camera} positionStyle={style}>
+      <ZoomDial
+        camera={camera}
+        currentZoom={camera === 'back' ? backZoom : frontZoom}
+        onZoomChange={onZoomChange}
+        compact={compact}
+      />
+    </ZoomDialOverlay>
+  );
+}
+
 function CameraControlsOverlayImpl({
   cameraMode,
   aspect,
@@ -39,46 +124,29 @@ function CameraControlsOverlayImpl({
   frontZoom,
   onZoomChange,
 }: CameraControlsOverlayProps) {
+  const canvas = canvasRectForAspect(aspect, screenWidth, screenHeight);
+  const ratio = clamp(dualLayoutRatio || 0.5, 0.1, 0.9);
+
   if (cameraMode === CAMERA_MODE.BACK) {
-    return (
-      <ZoomDialOverlay positionStyle={styles.singleZoomPosition}>
-        <ZoomDial camera="back" currentZoom={backZoom} onZoomChange={onZoomChange} />
-      </ZoomDialOverlay>
-    );
+    return renderZoom('back', canvas, backZoom, frontZoom, onZoomChange);
   }
 
   if (cameraMode === CAMERA_MODE.FRONT) {
-    return (
-      <ZoomDialOverlay positionStyle={styles.singleZoomPosition}>
-        <ZoomDial camera="front" currentZoom={frontZoom} onZoomChange={onZoomChange} />
-      </ZoomDialOverlay>
-    );
+    return renderZoom('front', canvas, backZoom, frontZoom, onZoomChange);
   }
 
   if (cameraMode === CAMERA_MODE.LR) {
+    const primaryW = canvas.width * ratio;
+    const secondaryW = canvas.width - primaryW;
+    const leadingRect = { left: canvas.left, top: canvas.top, width: primaryW, height: canvas.height };
+    const trailingRect = { left: canvas.left + primaryW, top: canvas.top, width: secondaryW, height: canvas.height };
     const firstCamera: CameraSide = isFlipped ? 'front' : 'back';
     const secondCamera: CameraSide = isFlipped ? 'back' : 'front';
-    // Usable pixel width inside each column (8px padding each side)
-    const leftW = screenWidth * dualLayoutRatio - 16;
-    const rightW = screenWidth * (1 - dualLayoutRatio) - 16;
+
     return (
       <>
-        <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: leftW + 16 }]}>
-          <ZoomDial
-            camera={firstCamera}
-            currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
-            onZoomChange={onZoomChange}
-            availableWidth={leftW}
-          />
-        </ZoomDialOverlay>
-        <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: rightW + 16 }]}>
-          <ZoomDial
-            camera={secondCamera}
-            currentZoom={secondCamera === 'back' ? backZoom : frontZoom}
-            onZoomChange={onZoomChange}
-            availableWidth={rightW}
-          />
-        </ZoomDialOverlay>
+        {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange)}
+        {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange)}
         <AreaDivider
           mode="lr"
           ratio={dualLayoutRatio}
@@ -94,27 +162,17 @@ function CameraControlsOverlayImpl({
     const firstCamera: CameraSide = isFlipped ? 'front' : 'back';
     const secondCamera: CameraSide = isFlipped ? 'back' : 'front';
     const isLandscape = screenWidth > screenHeight;
+
     if (isLandscape) {
-      const leftW = screenWidth * dualLayoutRatio - 16;
-      const rightW = screenWidth * (1 - dualLayoutRatio) - 16;
+      const primaryW = canvas.width * ratio;
+      const secondaryW = canvas.width - primaryW;
+      const leadingRect = { left: canvas.left, top: canvas.top, width: primaryW, height: canvas.height };
+      const trailingRect = { left: canvas.left + primaryW, top: canvas.top, width: secondaryW, height: canvas.height };
+
       return (
         <>
-          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: 8, width: leftW + 16 }]}>
-            <ZoomDial
-              camera={firstCamera}
-              currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
-              onZoomChange={onZoomChange}
-              availableWidth={leftW}
-            />
-          </ZoomDialOverlay>
-          <ZoomDialOverlay positionStyle={[styles.splitZoomPosition, { left: screenWidth * dualLayoutRatio + 8, width: rightW + 16 }]}>
-            <ZoomDial
-              camera={secondCamera}
-              currentZoom={secondCamera === 'back' ? backZoom : frontZoom}
-              onZoomChange={onZoomChange}
-              availableWidth={rightW}
-            />
-          </ZoomDialOverlay>
+          {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange)}
+          {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange)}
           <AreaDivider
             mode="lr"
             ratio={dualLayoutRatio}
@@ -126,25 +184,15 @@ function CameraControlsOverlayImpl({
       );
     }
 
-    // Portrait: zoom for top section sits near the divider; clamp so it never
-    // overlaps the status bar area at the top of the screen.
-    const sxTopZoomY = Math.max(INTERACTION_TOP, screenHeight * dualLayoutRatio - 96);
+    const primaryH = canvas.height * ratio;
+    const secondaryH = canvas.height - primaryH;
+    const topRect = { left: canvas.left, top: canvas.top, width: canvas.width, height: primaryH };
+    const bottomRect = { left: canvas.left, top: canvas.top + primaryH, width: canvas.width, height: secondaryH };
+
     return (
       <>
-        <ZoomDialOverlay positionStyle={[styles.sxTopZoomPosition, { top: sxTopZoomY }]}>
-          <ZoomDial
-            camera={firstCamera}
-            currentZoom={firstCamera === 'back' ? backZoom : frontZoom}
-            onZoomChange={onZoomChange}
-          />
-        </ZoomDialOverlay>
-        <ZoomDialOverlay positionStyle={styles.sxBottomZoomPosition}>
-          <ZoomDial
-            camera={secondCamera}
-            currentZoom={secondCamera === 'back' ? backZoom : frontZoom}
-            onZoomChange={onZoomChange}
-          />
-        </ZoomDialOverlay>
+        {renderZoom(firstCamera, topRect, backZoom, frontZoom, onZoomChange)}
+        {renderZoom(secondCamera, bottomRect, backZoom, frontZoom, onZoomChange)}
         <AreaDivider
           mode="sx"
           ratio={dualLayoutRatio}
@@ -156,51 +204,19 @@ function CameraControlsOverlayImpl({
     );
   }
 
-  // PIP modes
   const mainCamera: CameraSide = isFlipped ? 'front' : 'back';
   const pipCamera: CameraSide = isFlipped ? 'back' : 'front';
-  let canvasWidth = screenWidth;
-  let canvasHeight = screenHeight;
-  if (aspect === '9:16') {
-    canvasHeight = canvasWidth * 16 / 9;
-    if (canvasHeight > screenHeight) {
-      canvasHeight = screenHeight;
-      canvasWidth = canvasHeight * 9 / 16;
-    }
-  } else if (aspect === '3:4') {
-    canvasHeight = canvasWidth * 4 / 3;
-    if (canvasHeight > screenHeight) {
-      canvasHeight = screenHeight;
-      canvasWidth = canvasHeight * 3 / 4;
-    }
-  } else if (aspect === '1:1') {
-    canvasWidth = Math.min(screenWidth, screenHeight);
-    canvasHeight = canvasWidth;
-  }
-  const canvasLeft = (screenWidth - canvasWidth) / 2;
-  const canvasTop = (screenHeight - canvasHeight) / 2;
-  // PIP is a square whose side = pipSize * canvasWidth (mirrors native updateLayout).
-  const pipSizePx = pipSize * canvasWidth;
-  const pipBtnWidth = Math.max(92, pipSizePx - 16);
-  // pipPosition.{x,y} are fractions of the native camera canvas.
-  const pipCenterX = canvasLeft + pipPosition.x * canvasWidth;
-  const pipCenterY = canvasTop + pipPosition.y * canvasHeight;
-  const pipLeft = clamp(pipCenterX - pipBtnWidth / 2, 8, screenWidth - pipBtnWidth - 8);
-  const pipTop = clamp(pipCenterY + pipSizePx / 2 + 4, INTERACTION_TOP, screenHeight - 132);
+  const pipSide = canvas.width * clamp(pipSize || 0.28, 0.05, 0.5);
+  const pipCenterX = canvas.left + canvas.width * clamp(pipPosition.x, 0, 1);
+  const pipCenterY = canvas.top + canvas.height * clamp(pipPosition.y, 0, 1);
+  const pipLeft = clamp(pipCenterX - pipSide / 2, canvas.left, canvas.left + canvas.width - pipSide);
+  const pipTop = clamp(pipCenterY - pipSide / 2, canvas.top, canvas.top + canvas.height - pipSide);
+  const pipRect = { left: pipLeft, top: pipTop, width: pipSide, height: pipSide };
 
   return (
     <>
-      <ZoomDialOverlay positionStyle={styles.singleZoomPosition}>
-        <ZoomDial camera={mainCamera} currentZoom={mainCamera === 'back' ? backZoom : frontZoom} onZoomChange={onZoomChange} />
-      </ZoomDialOverlay>
-      <ZoomDialOverlay positionStyle={[styles.pipZoomPosition, { left: pipLeft, top: pipTop, width: pipBtnWidth }]}>
-        <ZoomDial
-          camera={pipCamera}
-          currentZoom={pipCamera === 'back' ? backZoom : frontZoom}
-          onZoomChange={onZoomChange}
-          availableWidth={pipBtnWidth}
-        />
-      </ZoomDialOverlay>
+      {renderZoom(mainCamera, canvas, backZoom, frontZoom, onZoomChange)}
+      {renderZoom(pipCamera, pipRect, backZoom, frontZoom, onZoomChange)}
     </>
   );
 }
