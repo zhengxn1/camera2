@@ -27,7 +27,7 @@ interface ZoomDialProps {
 }
 
 function formatZoomLabel(level: number): string {
-  return level < 1 ? level.toFixed(1) : String(+(level.toFixed(1))).replace(/\.0$/, '');
+  return level < 1 ? level.toFixed(1).replace(/^0/, '') : String(+(level.toFixed(1))).replace(/\.0$/, '');
 }
 
 function ZoomDialImpl({ camera, currentZoom, onZoomChange, compact = false }: ZoomDialProps) {
