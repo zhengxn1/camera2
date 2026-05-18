@@ -31,6 +31,7 @@ interface CameraControlsOverlayProps {
   backZoom: number;
   frontZoom: number;
   onZoomChange: (camera: CameraSide, level: number) => void;
+  layoutInteractionDisabled?: boolean;
 }
 
 const ZOOM_PILL_W = 48;
@@ -123,6 +124,7 @@ function CameraControlsOverlayImpl({
   backZoom,
   frontZoom,
   onZoomChange,
+  layoutInteractionDisabled = false,
 }: CameraControlsOverlayProps) {
   const canvas = canvasRectForAspect(aspect, screenWidth, screenHeight);
   const ratio = clamp(dualLayoutRatio || 0.5, 0.1, 0.9);
@@ -147,13 +149,15 @@ function CameraControlsOverlayImpl({
       <>
         {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange)}
         {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange)}
-        <AreaDivider
-          mode="lr"
-          ratio={dualLayoutRatio}
-          onRatioChange={onDualLayoutRatioChange}
-          screenWidth={screenWidth}
-          screenHeight={screenHeight}
-        />
+        {!layoutInteractionDisabled ? (
+          <AreaDivider
+            mode="lr"
+            ratio={dualLayoutRatio}
+            onRatioChange={onDualLayoutRatioChange}
+            screenWidth={screenWidth}
+            screenHeight={screenHeight}
+          />
+        ) : null}
       </>
     );
   }
@@ -173,13 +177,15 @@ function CameraControlsOverlayImpl({
         <>
           {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange)}
           {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange)}
-          <AreaDivider
-            mode="lr"
-            ratio={dualLayoutRatio}
-            onRatioChange={onDualLayoutRatioChange}
-            screenWidth={screenWidth}
-            screenHeight={screenHeight}
-          />
+          {!layoutInteractionDisabled ? (
+            <AreaDivider
+              mode="lr"
+              ratio={dualLayoutRatio}
+              onRatioChange={onDualLayoutRatioChange}
+              screenWidth={screenWidth}
+              screenHeight={screenHeight}
+            />
+          ) : null}
         </>
       );
     }
@@ -193,13 +199,15 @@ function CameraControlsOverlayImpl({
       <>
         {renderZoom(firstCamera, topRect, backZoom, frontZoom, onZoomChange)}
         {renderZoom(secondCamera, bottomRect, backZoom, frontZoom, onZoomChange)}
-        <AreaDivider
-          mode="sx"
-          ratio={dualLayoutRatio}
-          onRatioChange={onDualLayoutRatioChange}
-          screenWidth={screenWidth}
-          screenHeight={screenHeight}
-        />
+        {!layoutInteractionDisabled ? (
+          <AreaDivider
+            mode="sx"
+            ratio={dualLayoutRatio}
+            onRatioChange={onDualLayoutRatioChange}
+            screenWidth={screenWidth}
+            screenHeight={screenHeight}
+          />
+        ) : null}
       </>
     );
   }

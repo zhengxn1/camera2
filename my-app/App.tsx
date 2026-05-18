@@ -131,7 +131,7 @@ export default function App() {
         disabled={session.interactionDisabled || session.saving}
       />
 
-      {!session.interactionDisabled && screen.width > 0 ? (
+      {screen.width > 0 ? (
         <CameraControlsOverlay
           cameraMode={cameraMode}
           aspect={aspect}
@@ -145,6 +145,7 @@ export default function App() {
           backZoom={backZoom}
           frontZoom={frontZoom}
           onZoomChange={handleZoomChange}
+          layoutInteractionDisabled={session.interactionDisabled}
         />
       ) : null}
 
