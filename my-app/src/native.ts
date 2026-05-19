@@ -35,6 +35,28 @@ export interface CameraPermissionModuleSpec {
   requestCameraPermission?: () => Promise<boolean>;
 }
 
+export interface VideoUnlockProduct {
+  id: string;
+  displayName: string;
+  description: string;
+  displayPrice: string;
+}
+
+export interface VideoUnlockResult {
+  unlocked: boolean;
+  cancelled?: boolean;
+  pending?: boolean;
+  unknown?: boolean;
+  transactionId?: string;
+}
+
+export interface VideoUnlockModuleSpec {
+  getProduct?: () => Promise<VideoUnlockProduct>;
+  isVideoUnlocked?: () => Promise<boolean>;
+  purchaseVideoUnlock?: () => Promise<VideoUnlockResult>;
+  restorePurchases?: () => Promise<VideoUnlockResult>;
+}
+
 let NativeDualCameraView: HostComponent<NativeDualCameraViewProps> | null = null;
 try {
   NativeDualCameraView = requireNativeComponent<NativeDualCameraViewProps>('DualCameraView');
@@ -45,6 +67,7 @@ try {
 const DualCameraModule: DualCameraModuleSpec | undefined = NativeModules.DualCameraModule;
 const CameraPermissionModule: CameraPermissionModuleSpec | undefined =
   NativeModules.CameraPermissionModule;
+const VideoUnlockModule: VideoUnlockModuleSpec | undefined = NativeModules.VideoUnlockModule;
 
 const DualCameraEventEmitter = NativeModules.DualCameraEventEmitter;
 const eventEmitter: NativeEventEmitter | null = DualCameraEventEmitter
@@ -55,5 +78,6 @@ export {
   NativeDualCameraView,
   DualCameraModule,
   CameraPermissionModule,
+  VideoUnlockModule,
   eventEmitter,
 };

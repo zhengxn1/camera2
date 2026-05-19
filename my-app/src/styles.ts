@@ -54,7 +54,7 @@ export const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   closeButtonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  settingRow: { gap: 10 },
+  settingRow: { gap: 10, marginTop: 12 },
   settingLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 13, fontWeight: '600' },
   aspectOptions: { flexDirection: 'row', gap: 8 },
   aspectBtn: {
@@ -70,6 +70,16 @@ export const styles = StyleSheet.create({
   aspectBtnActive: { backgroundColor: 'rgba(77,166,255,0.42)', borderColor: '#4da6ff' },
   aspectBtnText: { color: 'rgba(255,255,255,0.72)', fontSize: 13, fontWeight: '700' },
   aspectBtnTextActive: { color: '#fff' },
+  restoreButton: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  restoreButtonText: { color: '#fff', fontSize: 13, fontWeight: '700' },
 
   rightPanel: {
     position: 'absolute',

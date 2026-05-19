@@ -8,7 +8,8 @@ Pod::Spec.new do |s|
   s.author       = { "Author" => "author@example.com" }
   s.platform     = :ios, "13.0"
   s.source       = { :path => "." }
-  s.source_files = "*.{h,m}"
-  s.frameworks   = "AVFoundation", "UIKit", "Photos"
+  s.source_files = "*.{h,m,swift}"
+  s.swift_version = "5.0"
+  s.frameworks   = "AVFoundation", "UIKit", "Photos", "StoreKit"
   s.dependency "React-Core"
 end

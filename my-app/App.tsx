@@ -18,6 +18,7 @@ import { useDualCameraSession } from './src/hooks/useDualCameraSession';
 import { useDualCameraView } from './src/hooks/useDualCameraView';
 import { useMediaPermission } from './src/hooks/useMediaPermission';
 import { useScreenSize } from './src/hooks/useScreenSize';
+import { useVideoUnlock } from './src/hooks/useVideoUnlock';
 
 import { AudioLevelIndicator } from './src/components/AudioLevelIndicator';
 import { BottomBar } from './src/components/BottomBar';
@@ -35,6 +36,7 @@ export default function App() {
   const screen = useScreenSize();
   const { audioLevel, pipPosition, pipSize, resetPip } = useDualCameraView();
   const session = useDualCameraSession({ ensureMedia: media.ensure });
+  const videoUnlock = useVideoUnlock();
   const [aspect, setAspect] = useAspectRatio();
 
   const [cameraMode, setCameraMode] = useState<CameraMode>(CAMERA_MODE.SX);
@@ -82,13 +84,22 @@ export default function App() {
     setIsFlipped(false);
   }, [session.interactionDisabled, resetPip]);
 
-  const handleCaptureModeChange = useCallback((mode: CaptureMode) => {
-    if (!session.interactionDisabled) setCaptureMode(mode);
-  }, [session.interactionDisabled]);
+  const handleCaptureModeChange = useCallback(async (mode: CaptureMode) => {
+    if (session.interactionDisabled || videoUnlock.purchasing) return;
+    if (mode === 'video') {
+      const ok = await videoUnlock.ensureUnlocked();
+      if (!ok) return;
+    }
+    setCaptureMode(mode);
+  }, [session.interactionDisabled, videoUnlock]);
 
-  const onShutterPress = useCallback(() => {
+  const onShutterPress = useCallback(async () => {
+    if (captureMode === 'video' && !session.recording && !session.recordingStarting) {
+      const ok = await videoUnlock.ensureUnlocked();
+      if (!ok) return;
+    }
     session.handleShutterPress(captureMode);
-  }, [session, captureMode]);
+  }, [session, captureMode, videoUnlock]);
 
   const openMenu = useCallback(() => setMenuExpanded(true), []);
   const closeMenu = useCallback(() => setMenuExpanded(false), []);
@@ -128,7 +139,9 @@ export default function App() {
         onClose={closeMenu}
         aspectRatio={aspect}
         onAspectChange={setAspect}
-        disabled={session.interactionDisabled || session.saving}
+        disabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
+        onRestorePurchases={videoUnlock.restore}
+        purchasesDisabled={session.interactionDisabled || videoUnlock.purchasing}
       />
 
       {screen.width > 0 ? (
