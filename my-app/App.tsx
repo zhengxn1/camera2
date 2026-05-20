@@ -101,14 +101,18 @@ export default function App() {
     session.handleShutterPress(captureMode);
   }, [session, captureMode, videoLocked]);
 
-  const handlePurchaseVideo = useCallback(async () => {
-    const ok = await videoUnlock.purchase();
-    if (ok) setUnlockSheetVisible(false);
+  const handlePurchaseVideo = useCallback(() => {
+    setUnlockSheetVisible(false);
+    setTimeout(() => {
+      videoUnlock.purchase();
+    }, 250);
   }, [videoUnlock]);
 
-  const handleRestorePurchases = useCallback(async () => {
-    const ok = await videoUnlock.restore();
-    if (ok) setUnlockSheetVisible(false);
+  const handleRestorePurchases = useCallback(() => {
+    setUnlockSheetVisible(false);
+    setTimeout(() => {
+      videoUnlock.restore();
+    }, 250);
   }, [videoUnlock]);
 
   const openMenu = useCallback(() => setMenuExpanded(true), []);
