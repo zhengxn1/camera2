@@ -74,10 +74,26 @@ const eventEmitter: NativeEventEmitter | null = DualCameraEventEmitter
   ? new NativeEventEmitter(DualCameraEventEmitter)
   : null;
 
+function getNativeModuleDiagnostics(): string {
+  const moduleNames = Object.keys(NativeModules).sort();
+  const cameraModules = moduleNames.filter(name =>
+    name.toLowerCase().includes('camera') ||
+    name.toLowerCase().includes('unlock') ||
+    name.toLowerCase().includes('purchase') ||
+    name.toLowerCase().includes('store'),
+  );
+
+  return [
+    `VideoUnlockModule: ${VideoUnlockModule ? 'present' : 'missing'}`,
+    `Platform modules: ${cameraModules.join(', ') || '(none matched)'}`,
+  ].join('\n');
+}
+
 export {
   NativeDualCameraView,
   DualCameraModule,
   CameraPermissionModule,
   VideoUnlockModule,
+  getNativeModuleDiagnostics,
   eventEmitter,
 };

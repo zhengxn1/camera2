@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
-import { VideoUnlockModule, type VideoUnlockProduct } from '../native';
+import { getNativeModuleDiagnostics, VideoUnlockModule, type VideoUnlockProduct } from '../native';
 
 export interface VideoUnlockApi {
   unlocked: boolean;
@@ -51,7 +51,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     console.log('[VideoUnlock] restore start', { moduleAvailable });
     if (!moduleAvailable || !VideoUnlockModule?.restorePurchases) {
       console.warn('[VideoUnlock] restore skipped; native module unavailable');
-      Alert.alert('Restore unavailable', 'Purchases are only available on iOS builds from App Store or TestFlight.');
+      Alert.alert('Restore unavailable', `Native purchase module is unavailable.\n\n${getNativeModuleDiagnostics()}`);
       return false;
     }
 
@@ -77,7 +77,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     console.log('[VideoUnlock] purchase start', { moduleAvailable, hasProduct: !!product });
     if (!moduleAvailable || !VideoUnlockModule?.purchaseVideoUnlock) {
       console.warn('[VideoUnlock] purchase skipped; native module unavailable');
-      Alert.alert('Purchase unavailable', 'Purchases are only available on iOS builds from App Store or TestFlight.');
+      Alert.alert('Purchase unavailable', `Native purchase module is unavailable.\n\n${getNativeModuleDiagnostics()}`);
       return false;
     }
 
