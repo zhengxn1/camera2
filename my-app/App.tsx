@@ -102,15 +102,19 @@ export default function App() {
   }, [session, captureMode, videoLocked]);
 
   const handlePurchaseVideo = useCallback(() => {
+    console.log('[VideoUnlock] unlock button pressed; closing sheet before purchase');
     setUnlockSheetVisible(false);
     setTimeout(() => {
+      console.log('[VideoUnlock] invoking purchase after sheet close');
       videoUnlock.purchase();
     }, 250);
   }, [videoUnlock]);
 
   const handleRestorePurchases = useCallback(() => {
+    console.log('[VideoUnlock] restore button pressed; closing sheet before restore');
     setUnlockSheetVisible(false);
     setTimeout(() => {
+      console.log('[VideoUnlock] invoking restore after sheet close');
       videoUnlock.restore();
     }, 250);
   }, [videoUnlock]);

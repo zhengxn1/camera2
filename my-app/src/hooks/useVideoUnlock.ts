@@ -26,13 +26,16 @@ export function useVideoUnlock(): VideoUnlockApi {
   const moduleAvailable = Platform.OS === 'ios' && !!VideoUnlockModule;
 
   const refresh = useCallback(async () => {
+    console.log('[VideoUnlock] refresh entitlement start', { moduleAvailable });
     if (!moduleAvailable || !VideoUnlockModule?.isVideoUnlocked) {
+      console.warn('[VideoUnlock] refresh skipped; native module unavailable');
       setLoading(false);
       return false;
     }
 
     try {
       const next = await VideoUnlockModule.isVideoUnlocked();
+      console.log('[VideoUnlock] refresh entitlement result', { unlocked: next });
       unlockedRef.current = next;
       setUnlocked(next);
       return next;
@@ -45,7 +48,9 @@ export function useVideoUnlock(): VideoUnlockApi {
   }, [moduleAvailable]);
 
   const restore = useCallback(async () => {
+    console.log('[VideoUnlock] restore start', { moduleAvailable });
     if (!moduleAvailable || !VideoUnlockModule?.restorePurchases) {
+      console.warn('[VideoUnlock] restore skipped; native module unavailable');
       Alert.alert('Restore unavailable', 'Purchases are only available on iOS builds from App Store or TestFlight.');
       return false;
     }
@@ -53,6 +58,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     setPurchasing(true);
     try {
       const result = await VideoUnlockModule.restorePurchases();
+      console.log('[VideoUnlock] restore result', result);
       const next = !!result?.unlocked;
       unlockedRef.current = next;
       setUnlocked(next);
@@ -62,12 +68,15 @@ export function useVideoUnlock(): VideoUnlockApi {
       Alert.alert('Restore failed', e?.message ?? String(e));
       return false;
     } finally {
+      console.log('[VideoUnlock] restore finished');
       setPurchasing(false);
     }
   }, [moduleAvailable]);
 
   const purchase = useCallback(async () => {
+    console.log('[VideoUnlock] purchase start', { moduleAvailable, hasProduct: !!product });
     if (!moduleAvailable || !VideoUnlockModule?.purchaseVideoUnlock) {
+      console.warn('[VideoUnlock] purchase skipped; native module unavailable');
       Alert.alert('Purchase unavailable', 'Purchases are only available on iOS builds from App Store or TestFlight.');
       return false;
     }
@@ -75,6 +84,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     setPurchasing(true);
     try {
       const result = await VideoUnlockModule.purchaseVideoUnlock();
+      console.log('[VideoUnlock] purchase result', result);
       const next = !!result?.unlocked;
       unlockedRef.current = next;
       setUnlocked(next);
@@ -88,16 +98,21 @@ export function useVideoUnlock(): VideoUnlockApi {
       Alert.alert('Purchase failed', e?.message ?? String(e));
       return false;
     } finally {
+      console.log('[VideoUnlock] purchase finished');
       setPurchasing(false);
     }
-  }, [moduleAvailable]);
+  }, [moduleAvailable, product]);
 
   useEffect(() => {
     refresh();
 
     if (moduleAvailable && VideoUnlockModule?.getProduct) {
+      console.log('[VideoUnlock] product load start');
       VideoUnlockModule.getProduct()
-        .then(setProduct)
+        .then((nextProduct) => {
+          console.log('[VideoUnlock] product load result', nextProduct);
+          setProduct(nextProduct);
+        })
         .catch((e) => console.warn('[VideoUnlock] Product load failed', e));
     }
   }, [moduleAvailable, refresh]);
