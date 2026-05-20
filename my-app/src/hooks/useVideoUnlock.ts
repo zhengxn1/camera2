@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import { getNativeModuleDiagnostics, VideoUnlockModule, type VideoUnlockProduct } from '../native';
 
+const STOREKIT_TIMEOUT_MS = 15000;
+
 export interface VideoUnlockApi {
   unlocked: boolean;
   loading: boolean;
@@ -10,6 +12,18 @@ export interface VideoUnlockApi {
   purchase: () => Promise<boolean>;
   restore: () => Promise<boolean>;
   refresh: () => Promise<boolean>;
+}
+
+function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${STOREKIT_TIMEOUT_MS / 1000}s. Check StoreKit testing setup, sandbox account, or App Store Connect product availability.`));
+    }, STOREKIT_TIMEOUT_MS);
+
+    promise
+      .then(resolve, reject)
+      .finally(() => clearTimeout(timer));
+  });
 }
 
 export function useVideoUnlock(): VideoUnlockApi {
@@ -34,7 +48,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     }
 
     try {
-      const next = await VideoUnlockModule.isVideoUnlocked();
+      const next = await withTimeout(VideoUnlockModule.isVideoUnlocked(), 'Video unlock entitlement refresh');
       console.log('[VideoUnlock] refresh entitlement result', { unlocked: next });
       unlockedRef.current = next;
       setUnlocked(next);
@@ -57,7 +71,7 @@ export function useVideoUnlock(): VideoUnlockApi {
 
     setPurchasing(true);
     try {
-      const result = await VideoUnlockModule.restorePurchases();
+      const result = await withTimeout(VideoUnlockModule.restorePurchases(), 'Video unlock restore');
       console.log('[VideoUnlock] restore result', result);
       const next = !!result?.unlocked;
       unlockedRef.current = next;
@@ -83,7 +97,7 @@ export function useVideoUnlock(): VideoUnlockApi {
 
     setPurchasing(true);
     try {
-      const result = await VideoUnlockModule.purchaseVideoUnlock();
+      const result = await withTimeout(VideoUnlockModule.purchaseVideoUnlock(), 'Video unlock purchase');
       console.log('[VideoUnlock] purchase result', result);
       const next = !!result?.unlocked;
       unlockedRef.current = next;
@@ -108,7 +122,7 @@ export function useVideoUnlock(): VideoUnlockApi {
 
     if (moduleAvailable && VideoUnlockModule?.getProduct) {
       console.log('[VideoUnlock] product load start');
-      VideoUnlockModule.getProduct()
+      withTimeout(VideoUnlockModule.getProduct(), 'Video unlock product load')
         .then((nextProduct) => {
           console.log('[VideoUnlock] product load result', nextProduct);
           setProduct(nextProduct);
