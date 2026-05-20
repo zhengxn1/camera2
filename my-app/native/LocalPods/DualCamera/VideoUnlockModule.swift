@@ -4,7 +4,7 @@ import StoreKit
 
 @objc(VideoUnlockModule)
 final class VideoUnlockModule: NSObject {
-  private let videoUnlockProductID = "com.zhengning.dualcamera.video_unlock"
+  private let videoUnlockProductID = "com.zhengning.dualcamera.unlock"
   private var updatesTask: Task<Void, Never>?
 
   override init() {
