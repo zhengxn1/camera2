@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "my-app",
+    "name": "KIRO分屏相机",
     "slug": "my-app",
     "owner": "zxn3",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": false,
     "splash": {
@@ -17,6 +17,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.zhengning.dualcamera",
       "infoPlist": {
+        "CFBundleDisplayName": "KIRO分屏相机",
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "需要访问相机以进行全屏预览与拍照。",
         "NSMicrophoneUsageDescription": "需要访问麦克风以录制视频声音。"
@@ -25,7 +26,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/app.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
