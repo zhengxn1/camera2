@@ -7,7 +7,7 @@ export interface VideoUnlockApi {
   loading: boolean;
   purchasing: boolean;
   product: VideoUnlockProduct | null;
-  ensureUnlocked: () => Promise<boolean>;
+  purchase: () => Promise<boolean>;
   restore: () => Promise<boolean>;
   refresh: () => Promise<boolean>;
 }
@@ -66,7 +66,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     }
   }, [moduleAvailable]);
 
-  const buy = useCallback(async () => {
+  const purchase = useCallback(async () => {
     if (!moduleAvailable || !VideoUnlockModule?.purchaseVideoUnlock) {
       Alert.alert('Purchase unavailable', 'Purchases are only available on iOS builds from App Store or TestFlight.');
       return false;
@@ -79,9 +79,7 @@ export function useVideoUnlock(): VideoUnlockApi {
       unlockedRef.current = next;
       setUnlocked(next);
 
-      if (next) {
-        Alert.alert('Unlocked', 'Video recording is now available.');
-      } else if (result?.pending) {
+      if (result?.pending) {
         Alert.alert('Purchase pending', 'The purchase is waiting for approval. Video recording will unlock after Apple completes the transaction.');
       }
 
@@ -93,26 +91,6 @@ export function useVideoUnlock(): VideoUnlockApi {
       setPurchasing(false);
     }
   }, [moduleAvailable]);
-
-  const ensureUnlocked = useCallback(async () => {
-    if (unlockedRef.current) return true;
-
-    const current = await refresh();
-    if (current) return true;
-
-    return new Promise<boolean>((resolve) => {
-      const price = product?.displayPrice ? ` for ${product.displayPrice}` : '';
-      Alert.alert(
-        'Unlock video recording',
-        `Photo capture is free. Unlock video recording${price} with a one-time App Store purchase.`,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
-          { text: 'Restore', onPress: () => restore().then(resolve) },
-          { text: 'Unlock', onPress: () => buy().then(resolve) },
-        ],
-      );
-    });
-  }, [buy, product?.displayPrice, refresh, restore]);
 
   useEffect(() => {
     refresh();
@@ -129,8 +107,8 @@ export function useVideoUnlock(): VideoUnlockApi {
     loading,
     purchasing,
     product,
-    ensureUnlocked,
+    purchase,
     restore,
     refresh,
-  }), [ensureUnlocked, loading, product, purchasing, refresh, restore, unlocked]);
+  }), [loading, product, purchase, purchasing, refresh, restore, unlocked]);
 }

@@ -15,6 +15,7 @@ interface BottomBarProps {
   recordingStarting: boolean;
   recordingStopping: boolean;
   saving: boolean;
+  videoLocked: boolean;
   onShutterPress: () => void;
   onModeSwitch: (mode: CameraMode) => void;
   onCaptureModeChange: (mode: CaptureMode) => void;
@@ -29,6 +30,7 @@ function BottomBarImpl({
   recordingStarting,
   recordingStopping,
   saving,
+  videoLocked,
   onShutterPress,
   onModeSwitch,
   onCaptureModeChange,
@@ -63,9 +65,10 @@ function BottomBarImpl({
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={recording ? 'Stop' : (captureMode === 'picture' ? 'Take photo' : 'Record')}
+          accessibilityLabel={videoLocked ? 'Unlock video recording' : (recording ? 'Stop' : (captureMode === 'picture' ? 'Take photo' : 'Record'))}
           style={({ pressed }) => [
             styles.shutterOuter,
+            videoLocked && styles.shutterOuterLocked,
             pressed && styles.shutterOuterMuted,
             saving && styles.shutterOuterMuted,
             recordingStarting && styles.shutterOuterMuted,
@@ -74,7 +77,14 @@ function BottomBarImpl({
           ]}
           onPress={onShutterPress}
         >
-          <View style={[styles.shutterInner, (recording || recordingStarting) && styles.shutterInnerRecording]} />
+          {videoLocked ? (
+            <View style={styles.lockIcon}>
+              <View style={styles.lockIconShackle} />
+              <View style={styles.lockIconBody} />
+            </View>
+          ) : (
+            <View style={[styles.shutterInner, (recording || recordingStarting) && styles.shutterInnerRecording]} />
+          )}
         </Pressable>
 
         <Pressable

@@ -29,6 +29,7 @@ import { PermissionGate } from './src/components/PermissionGate';
 import { RecordingIndicator } from './src/components/RecordingIndicator';
 import { SavingOverlay } from './src/components/SavingOverlay';
 import { SettingsPopup } from './src/components/SettingsPopup';
+import { VideoUnlockSheet } from './src/components/VideoUnlockSheet';
 
 export default function App() {
   const { status: cameraStatus, request: requestCamera } = useCameraPermission();
@@ -45,6 +46,7 @@ export default function App() {
   const [frontZoom, setFrontZoom] = useState(1);
   const [backZoom, setBackZoom] = useState(1);
   const [menuExpanded, setMenuExpanded] = useState(false);
+  const [unlockSheetVisible, setUnlockSheetVisible] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
 
   // Start the native session as soon as camera permission is granted; the
@@ -84,22 +86,30 @@ export default function App() {
     setIsFlipped(false);
   }, [session.interactionDisabled, resetPip]);
 
-  const handleCaptureModeChange = useCallback(async (mode: CaptureMode) => {
+  const handleCaptureModeChange = useCallback((mode: CaptureMode) => {
     if (session.interactionDisabled || videoUnlock.purchasing) return;
-    if (mode === 'video') {
-      const ok = await videoUnlock.ensureUnlocked();
-      if (!ok) return;
-    }
     setCaptureMode(mode);
   }, [session.interactionDisabled, videoUnlock]);
 
-  const onShutterPress = useCallback(async () => {
-    if (captureMode === 'video' && !session.recording && !session.recordingStarting) {
-      const ok = await videoUnlock.ensureUnlocked();
-      if (!ok) return;
+  const videoLocked = captureMode === 'video' && !videoUnlock.unlocked;
+
+  const onShutterPress = useCallback(() => {
+    if (videoLocked && !session.recording && !session.recordingStarting) {
+      setUnlockSheetVisible(true);
+      return;
     }
     session.handleShutterPress(captureMode);
-  }, [session, captureMode, videoUnlock]);
+  }, [session, captureMode, videoLocked]);
+
+  const handlePurchaseVideo = useCallback(async () => {
+    const ok = await videoUnlock.purchase();
+    if (ok) setUnlockSheetVisible(false);
+  }, [videoUnlock]);
+
+  const handleRestorePurchases = useCallback(async () => {
+    const ok = await videoUnlock.restore();
+    if (ok) setUnlockSheetVisible(false);
+  }, [videoUnlock]);
 
   const openMenu = useCallback(() => setMenuExpanded(true), []);
   const closeMenu = useCallback(() => setMenuExpanded(false), []);
@@ -126,6 +136,7 @@ export default function App() {
         recordingStarting={session.recordingStarting}
         recordingStopping={session.recordingStopping}
         saving={session.saving}
+        videoLocked={videoLocked}
         onShutterPress={onShutterPress}
         onModeSwitch={handleModeSwitch}
         onCaptureModeChange={handleCaptureModeChange}
@@ -140,8 +151,15 @@ export default function App() {
         aspectRatio={aspect}
         onAspectChange={setAspect}
         disabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
-        onRestorePurchases={videoUnlock.restore}
-        purchasesDisabled={session.interactionDisabled || videoUnlock.purchasing}
+      />
+
+      <VideoUnlockSheet
+        visible={unlockSheetVisible}
+        product={videoUnlock.product}
+        purchasing={videoUnlock.purchasing}
+        onPurchase={handlePurchaseVideo}
+        onRestore={handleRestorePurchases}
+        onClose={() => setUnlockSheetVisible(false)}
       />
 
       {screen.width > 0 ? (

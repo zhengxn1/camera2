@@ -10,8 +10,6 @@ interface SettingsPopupProps {
   aspectRatio: AspectRatio;
   onAspectChange: (ratio: AspectRatio) => void;
   disabled: boolean;
-  onRestorePurchases: () => void;
-  purchasesDisabled: boolean;
 }
 
 function SettingsPopupImpl({
@@ -21,8 +19,6 @@ function SettingsPopupImpl({
   aspectRatio,
   onAspectChange,
   disabled,
-  onRestorePurchases,
-  purchasesDisabled,
 }: SettingsPopupProps) {
   return (
     <>
@@ -62,18 +58,6 @@ function SettingsPopupImpl({
                   </Pressable>
                 ))}
               </View>
-            </View>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Purchases</Text>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Restore purchases"
-                disabled={purchasesDisabled}
-                style={[styles.restoreButton, purchasesDisabled && styles.disabledControl]}
-                onPress={onRestorePurchases}
-              >
-                <Text style={styles.restoreButtonText}>Restore Purchases</Text>
-              </Pressable>
             </View>
           </View>
         </View>
