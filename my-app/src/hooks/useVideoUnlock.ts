@@ -97,7 +97,7 @@ export function useVideoUnlock(): VideoUnlockApi {
 
     setPurchasing(true);
     try {
-      const result = await withTimeout(VideoUnlockModule.purchaseVideoUnlock(), 'Video unlock purchase');
+      const result = await VideoUnlockModule.purchaseVideoUnlock();
       console.log('[VideoUnlock] purchase result', result);
       const next = !!result?.unlocked;
       unlockedRef.current = next;
