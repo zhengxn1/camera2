@@ -68,11 +68,11 @@ function canvasRectForAspect(aspect: AspectRatio, screenWidth: number, screenHei
   };
 }
 
-function zoomPositionForRect(rect: PreviewRect): { style: StyleProp<ViewStyle>; compact: boolean } {
+function zoomPositionForRect(rect: PreviewRect, bottomReserve = 0): { style: StyleProp<ViewStyle>; compact: boolean } {
   const compact = rect.width < 96 || rect.height < 96;
   const width = compact ? ZOOM_PILL_COMPACT_W : ZOOM_PILL_W;
   const height = compact ? ZOOM_PILL_COMPACT_H : ZOOM_PILL_H;
-  const bottomInset = compact ? 8 : 14;
+  const bottomInset = (compact ? 8 : 14) + bottomReserve;
   const minTop = rect.top + 4;
   const maxTop = rect.top + rect.height - height - 4;
   const targetTop = rect.top + rect.height - height - bottomInset;
@@ -95,9 +95,10 @@ function renderZoom(
   backZoom: number,
   frontZoom: number,
   onZoomChange: (camera: CameraSide, level: number) => void,
+  bottomReserve = 0,
 ) {
   if (rect.width <= 0 || rect.height <= 0) return null;
-  const { style, compact } = zoomPositionForRect(rect);
+  const { style, compact } = zoomPositionForRect(rect, bottomReserve);
 
   return (
     <ZoomDialOverlay key={camera} positionStyle={style}>
@@ -128,13 +129,14 @@ function CameraControlsOverlayImpl({
 }: CameraControlsOverlayProps) {
   const canvas = canvasRectForAspect(aspect, screenWidth, screenHeight);
   const ratio = clamp(dualLayoutRatio || 0.5, 0.1, 0.9);
+  const bottomControlReserve = aspect === '9:16' ? 70 : 0;
 
   if (cameraMode === CAMERA_MODE.BACK) {
-    return renderZoom('back', canvas, backZoom, frontZoom, onZoomChange);
+    return renderZoom('back', canvas, backZoom, frontZoom, onZoomChange, bottomControlReserve);
   }
 
   if (cameraMode === CAMERA_MODE.FRONT) {
-    return renderZoom('front', canvas, backZoom, frontZoom, onZoomChange);
+    return renderZoom('front', canvas, backZoom, frontZoom, onZoomChange, bottomControlReserve);
   }
 
   if (cameraMode === CAMERA_MODE.LR) {
@@ -147,8 +149,8 @@ function CameraControlsOverlayImpl({
 
     return (
       <>
-        {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange)}
-        {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange)}
+        {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange, bottomControlReserve)}
+        {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange, bottomControlReserve)}
         {!layoutInteractionDisabled ? (
           <AreaDivider
             mode="lr"
@@ -175,8 +177,8 @@ function CameraControlsOverlayImpl({
 
       return (
         <>
-          {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange)}
-          {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange)}
+          {renderZoom(firstCamera, leadingRect, backZoom, frontZoom, onZoomChange, bottomControlReserve)}
+          {renderZoom(secondCamera, trailingRect, backZoom, frontZoom, onZoomChange, bottomControlReserve)}
           {!layoutInteractionDisabled ? (
             <AreaDivider
               mode="lr"
@@ -198,7 +200,7 @@ function CameraControlsOverlayImpl({
     return (
       <>
         {renderZoom(firstCamera, topRect, backZoom, frontZoom, onZoomChange)}
-        {renderZoom(secondCamera, bottomRect, backZoom, frontZoom, onZoomChange)}
+        {renderZoom(secondCamera, bottomRect, backZoom, frontZoom, onZoomChange, bottomControlReserve)}
         {!layoutInteractionDisabled ? (
           <AreaDivider
             mode="sx"
@@ -223,7 +225,7 @@ function CameraControlsOverlayImpl({
 
   return (
     <>
-      {renderZoom(mainCamera, canvas, backZoom, frontZoom, onZoomChange)}
+      {renderZoom(mainCamera, canvas, backZoom, frontZoom, onZoomChange, bottomControlReserve)}
       {renderZoom(pipCamera, pipRect, backZoom, frontZoom, onZoomChange)}
     </>
   );
