@@ -8,11 +8,14 @@ interface MediaPermissionBannerProps {
 
 function MediaPermissionBannerImpl({ onRequest }: MediaPermissionBannerProps) {
   return (
-    <View style={styles.mediaBanner}>
-      <Text style={styles.mediaBannerText}>Photo library permission is required to save.</Text>
-      <Pressable style={styles.secondaryButton} onPress={onRequest}>
-        <Text style={styles.secondaryButtonLabel}>Allow</Text>
-      </Pressable>
+    <View style={styles.mediaPermissionOverlay} pointerEvents="box-none">
+      <View style={styles.mediaPermissionCard}>
+        <Text style={styles.permissionTitle}>需要相册权限</Text>
+        <Text style={styles.permissionBody}>请允许访问相册，用于保存照片和视频。</Text>
+        <Pressable style={styles.primaryButton} onPress={onRequest}>
+          <Text style={styles.primaryButtonLabel}>允许访问相册</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }

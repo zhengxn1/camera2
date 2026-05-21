@@ -44,16 +44,16 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
         const ok = await ensureMediaRef.current();
         if (ok) {
           await MediaLibrary.saveToLibraryAsync(event.uri);
-          Alert.alert('Saved', 'Photo saved to library.');
+          Alert.alert('已保存', '照片已保存到相册。');
         }
       } catch (e: any) {
-        Alert.alert('Save failed', e?.message ?? String(e));
+        Alert.alert('保存失败', e?.message ?? String(e));
       }
     });
 
     const subPhotoError = eventEmitter.addListener('onPhotoError', (event: { error?: string }) => {
       setSaving(false);
-      Alert.alert('Photo failed', event.error ?? 'Unknown error');
+      Alert.alert('拍照失败', event.error ?? '未知错误');
     });
 
     const subRecordingStarted = eventEmitter.addListener('onRecordingStarted', () => {
@@ -71,10 +71,10 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
         const ok = await ensureMediaRef.current();
         if (ok) {
           await MediaLibrary.saveToLibraryAsync(event.uri);
-          Alert.alert('Saved', 'Video saved to library.');
+          Alert.alert('已保存', '视频已保存到相册。');
         }
       } catch (e: any) {
-        Alert.alert('Save failed', e?.message ?? String(e));
+        Alert.alert('保存失败', e?.message ?? String(e));
       }
     });
 
@@ -83,8 +83,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
-      console.warn('[DualCamera] Recording error', event);
-      Alert.alert('Recording failed', event.error ?? 'Unknown error');
+      Alert.alert('录制失败', event.error ?? '未知错误');
     });
 
     const subSessionError = eventEmitter.addListener('onSessionError', (event: { error?: string }) => {
@@ -93,7 +92,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       setRecordingStarting(false);
       setRecording(false);
       setRecordingStopping(false);
-      Alert.alert('Camera error', event.error ?? 'Camera session failed.');
+      Alert.alert('相机错误', event.error ?? '相机会话异常。');
     });
 
     return () => {
@@ -108,7 +107,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
 
   const takePhoto = useCallback(async () => {
     if (!DualCameraModule?.takePhoto) {
-      Alert.alert('Error', 'Native camera module is unavailable.');
+      Alert.alert('无法拍照', '原生相机模块暂不可用。');
       return;
     }
     const ok = await ensureMediaRef.current();
@@ -119,7 +118,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
 
   const startRecording = useCallback(() => {
     if (!DualCameraModule?.startRecording) {
-      Alert.alert('Error', 'Native camera module is unavailable.');
+      Alert.alert('无法录制', '原生相机模块暂不可用。');
       return;
     }
     stopRequestedRef.current = false;

@@ -10,7 +10,7 @@ function RecordingIndicatorImpl({ starting }: RecordingIndicatorProps) {
   return (
     <View style={styles.recordingIndicator} pointerEvents="none">
       <View style={styles.recordingDot} />
-      <Text style={styles.recordingText}>{starting ? 'Preparing' : 'Recording'}</Text>
+      <Text style={styles.recordingText}>{starting ? '准备录制' : '录制中'}</Text>
     </View>
   );
 }

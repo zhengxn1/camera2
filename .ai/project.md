@@ -1,5 +1,5 @@
 status: draft
-last-verified: 2026-04-25
+last-verified: 2026-05-21
 
 # Project Context
 
@@ -46,3 +46,4 @@ last-verified: 2026-04-25
 - 2026-05-14: Added `.ai/specs/split-pip-gesture-fix-20260514.md` and fixed LR/SX divider drag ratio calculation plus PIP pan coordinate mapping so native PIP position is normalized to the camera canvas and RN overlay controls follow the same canvas geometry.
 - 2026-05-15: Adjusted `my-app/src/components/ZoomDial.tsx` so constrained split/PIP zoom controls keep the standard circular preset button format and collapse to two buttons: the active preset plus a cycle-to-next preset button.
 - 2026-05-15: Added `.ai/specs/zoom-pill-canvas-placement-20260515.md` and reworked zoom controls into single tap-to-cycle pills positioned at the bottom center of each actual preview rect, including PIP-internal placement.
+- 2026-05-21: Added `.ai/specs/ios-permission-unlock-purchase-ui-20260521.md` and implemented Chinese iOS-style camera/media permission dialogs, centered video unlock purchase card, StoreKit localized `displayPrice` purchase button, visible App Store waiting state, red unlocked video shutter state, and removal of `[VideoUnlock]` payment debug logs. Verified with `npx tsc --noEmit` in `my-app/`.

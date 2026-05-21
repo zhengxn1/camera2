@@ -84,8 +84,8 @@ function getNativeModuleDiagnostics(): string {
   );
 
   return [
-    `VideoUnlockModule: ${VideoUnlockModule ? 'present' : 'missing'}`,
-    `Platform modules: ${cameraModules.join(', ') || '(none matched)'}`,
+    `视频解锁模块：${VideoUnlockModule ? '已加载' : '未加载'}`,
+    `相关原生模块：${cameraModules.join(', ') || '未找到'}`,
   ].join('\n');
 }
 

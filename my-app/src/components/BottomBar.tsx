@@ -38,6 +38,8 @@ function BottomBarImpl({
   onFlip,
 }: BottomBarProps) {
   const disabled = recording || recordingStarting || recordingStopping;
+  const videoReady = captureMode === 'video' && !videoLocked;
+
   return (
     <>
       <View style={styles.rightPanel} pointerEvents="box-none">
@@ -56,19 +58,20 @@ function BottomBarImpl({
       <View style={styles.bottomBar} pointerEvents="box-none">
         <View style={styles.modeToggle}>
           <Pressable style={[styles.modeBtn, captureMode === 'picture' && styles.modeBtnActive]} onPress={() => onCaptureModeChange('picture')}>
-            <Text style={[styles.modeBtnText, captureMode === 'picture' && styles.modeBtnTextActive]}>Photo</Text>
+            <Text style={[styles.modeBtnText, captureMode === 'picture' && styles.modeBtnTextActive]}>拍照</Text>
           </Pressable>
           <Pressable style={[styles.modeBtn, captureMode === 'video' && styles.modeBtnActive]} onPress={() => onCaptureModeChange('video')}>
-            <Text style={[styles.modeBtnText, captureMode === 'video' && styles.modeBtnTextActive]}>Video</Text>
+            <Text style={[styles.modeBtnText, captureMode === 'video' && styles.modeBtnTextActive]}>视频</Text>
           </Pressable>
         </View>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={videoLocked ? 'Unlock video recording' : (recording ? 'Stop' : (captureMode === 'picture' ? 'Take photo' : 'Record'))}
+          accessibilityLabel={videoLocked ? '解锁视频录制' : (recording ? '停止录制' : (captureMode === 'picture' ? '拍照' : '开始录制'))}
           style={({ pressed }) => [
             styles.shutterOuter,
             videoLocked && styles.shutterOuterLocked,
+            videoReady && !recording && !recordingStarting && styles.shutterOuterVideoReady,
             pressed && styles.shutterOuterMuted,
             saving && styles.shutterOuterMuted,
             recordingStarting && styles.shutterOuterMuted,
@@ -78,12 +81,18 @@ function BottomBarImpl({
           onPress={onShutterPress}
         >
           {videoLocked ? (
-            <View style={styles.lockIcon}>
-              <View style={styles.lockIconShackle} />
-              <View style={styles.lockIconBody} />
+            <View style={styles.videoLockBadge}>
+              <View style={styles.videoLockShackle} />
+              <View style={styles.videoLockBody} />
             </View>
           ) : (
-            <View style={[styles.shutterInner, (recording || recordingStarting) && styles.shutterInnerRecording]} />
+            <View
+              style={[
+                styles.shutterInner,
+                videoReady && !recording && !recordingStarting && styles.shutterInnerVideoReady,
+                (recording || recordingStarting) && styles.shutterInnerRecording,
+              ]}
+            />
           )}
         </Pressable>
 
@@ -91,9 +100,9 @@ function BottomBarImpl({
           style={[styles.flipBtn, isFlipped && styles.flipBtnActive]}
           onPress={onFlip}
           accessibilityRole="button"
-          accessibilityLabel="Flip cameras"
+          accessibilityLabel="切换前后画面"
         >
-          <Text style={styles.flipBtnText}>↻</Text>
+          <Text style={styles.flipBtnText}>↔</Text>
         </Pressable>
       </View>
     </>

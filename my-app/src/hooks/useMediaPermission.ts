@@ -25,8 +25,8 @@ export function useMediaPermission(): MediaPermissionApi {
     const result = await requestPermission();
     if (result.granted) return true;
     Alert.alert(
-      'Media permission required',
-      'Saving photos and videos requires photo library access.',
+      '需要相册权限',
+      '请允许访问相册，用于保存照片和视频。',
     );
     return false;
   }, [granted, requestPermission]);

@@ -12,7 +12,7 @@ function AudioLevelIndicatorImpl({ level }: AudioLevelIndicatorProps) {
 
   return (
     <View style={styles.audioIndicator} pointerEvents="none">
-      <Text style={styles.audioLabel}>Audio</Text>
+      <Text style={styles.audioLabel}>声音</Text>
       <View style={styles.audioBars}>
         {Array.from({ length: barCount }).map((_, i) => (
           <View key={i} style={[styles.audioBar, i < activeCount ? styles.audioBarActive : null]} />

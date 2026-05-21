@@ -25,7 +25,7 @@ function SettingsPopupImpl({
       <View style={styles.topBar} pointerEvents="box-none">
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Open settings"
+          accessibilityLabel="打开设置"
           disabled={disabled}
           style={[styles.settingsButton, disabled && styles.disabledControl]}
           onPress={onOpen}
@@ -38,13 +38,13 @@ function SettingsPopupImpl({
           <Pressable style={StyleSheet.absoluteFillObject} onPress={onClose} />
           <View style={styles.settingsPanel}>
             <View style={styles.settingsHeader}>
-              <Text style={styles.settingsTitle}>Settings</Text>
-              <Pressable accessibilityRole="button" accessibilityLabel="Close settings" style={styles.closeButton} onPress={onClose}>
-                <Text style={styles.closeButtonText}>x</Text>
+              <Text style={styles.settingsTitle}>设置</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="关闭设置" style={styles.closeButton} onPress={onClose}>
+                <Text style={styles.closeButtonText}>×</Text>
               </Pressable>
             </View>
             <View style={styles.settingRow}>
-              <Text style={styles.settingLabel}>Aspect</Text>
+              <Text style={styles.settingLabel}>画幅比例</Text>
               <View style={styles.aspectOptions}>
                 {ASPECT_RATIOS.map(ratio => (
                   <Pressable

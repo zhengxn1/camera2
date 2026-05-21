@@ -30,8 +30,8 @@ function CameraSurfaceImpl({
   if (!NativeDualCameraView) {
     return (
       <View style={styles.fallbackContainer}>
-        <Text style={styles.fallbackTitle}>Dual Camera</Text>
-        <Text style={styles.fallbackText}>Loading native camera module...</Text>
+        <Text style={styles.fallbackTitle}>双摄相机</Text>
+        <Text style={styles.fallbackText}>正在加载原生相机模块...</Text>
       </View>
     );
   }

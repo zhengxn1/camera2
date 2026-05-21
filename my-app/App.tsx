@@ -89,7 +89,7 @@ export default function App() {
   const handleCaptureModeChange = useCallback((mode: CaptureMode) => {
     if (session.interactionDisabled || videoUnlock.purchasing) return;
     setCaptureMode(mode);
-  }, [session.interactionDisabled, videoUnlock]);
+  }, [session.interactionDisabled, videoUnlock.purchasing]);
 
   const videoLocked = captureMode === 'video' && !videoUnlock.unlocked;
 
@@ -101,22 +101,20 @@ export default function App() {
     session.handleShutterPress(captureMode);
   }, [session, captureMode, videoLocked]);
 
-  const handlePurchaseVideo = useCallback(() => {
-    console.log('[VideoUnlock] unlock button pressed; closing sheet before purchase');
-    setUnlockSheetVisible(false);
-    setTimeout(() => {
-      console.log('[VideoUnlock] invoking purchase after sheet close');
-      videoUnlock.purchase();
-    }, 250);
+  const handlePurchaseVideo = useCallback(async () => {
+    const ok = await videoUnlock.purchase();
+    if (ok) {
+      setUnlockSheetVisible(false);
+      setCaptureMode('video');
+    }
   }, [videoUnlock]);
 
-  const handleRestorePurchases = useCallback(() => {
-    console.log('[VideoUnlock] restore button pressed; closing sheet before restore');
-    setUnlockSheetVisible(false);
-    setTimeout(() => {
-      console.log('[VideoUnlock] invoking restore after sheet close');
-      videoUnlock.restore();
-    }, 250);
+  const handleRestorePurchases = useCallback(async () => {
+    const ok = await videoUnlock.restore();
+    if (ok) {
+      setUnlockSheetVisible(false);
+      setCaptureMode('video');
+    }
   }, [videoUnlock]);
 
   const openMenu = useCallback(() => setMenuExpanded(true), []);
@@ -164,10 +162,14 @@ export default function App() {
       <VideoUnlockSheet
         visible={unlockSheetVisible}
         product={videoUnlock.product}
+        productLoading={videoUnlock.productLoading}
+        productError={videoUnlock.productError}
         purchasing={videoUnlock.purchasing}
         onPurchase={handlePurchaseVideo}
         onRestore={handleRestorePurchases}
-        onClose={() => setUnlockSheetVisible(false)}
+        onClose={() => {
+          if (!videoUnlock.purchasing) setUnlockSheetVisible(false);
+        }}
       />
 
       {screen.width > 0 ? (

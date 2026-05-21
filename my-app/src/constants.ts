@@ -39,10 +39,10 @@ export interface ModeOption {
 }
 
 export const MODE_OPTIONS: ModeOption[] = [
-  { mode: CAMERA_MODE.PIP_SQUARE, label: 'Picture in picture', icon: 'pipSquare' },
-  { mode: CAMERA_MODE.PIP_CIRCLE, label: 'Circle picture in picture', icon: 'pipCircle' },
-  { mode: CAMERA_MODE.LR, label: 'Left right split', icon: 'lr' },
-  { mode: CAMERA_MODE.SX, label: 'Top bottom split', icon: 'sx' },
+  { mode: CAMERA_MODE.PIP_SQUARE, label: '画中画', icon: 'pipSquare' },
+  { mode: CAMERA_MODE.PIP_CIRCLE, label: '圆形画中画', icon: 'pipCircle' },
+  { mode: CAMERA_MODE.LR, label: '左右分屏', icon: 'lr' },
+  { mode: CAMERA_MODE.SX, label: '上下分屏', icon: 'sx' },
 ];
 
 export type CameraSide = 'back' | 'front';
