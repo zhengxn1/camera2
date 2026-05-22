@@ -14,6 +14,7 @@ export interface VideoUnlockApi {
   purchase: () => Promise<boolean>;
   restore: () => Promise<boolean>;
   refresh: () => Promise<boolean>;
+  refreshProduct: () => Promise<boolean>;
 }
 
 function withTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
@@ -42,6 +43,30 @@ export function useVideoUnlock(): VideoUnlockApi {
   }, [unlocked]);
 
   const moduleAvailable = Platform.OS === 'ios' && !!VideoUnlockModule;
+
+  const refreshProduct = useCallback(async () => {
+    if (!moduleAvailable || !VideoUnlockModule?.getProduct) {
+      setProductLoading(false);
+      setProduct(null);
+      setProductError('当前设备暂不支持购买。');
+      return false;
+    }
+
+    setProductLoading(true);
+    setProductError(null);
+    try {
+      const nextProduct = await withTimeout(VideoUnlockModule.getProduct(), '获取价格');
+      setProduct(nextProduct);
+      setProductError(null);
+      return true;
+    } catch {
+      setProduct(null);
+      setProductError('暂时无法获取价格，请稍后再试。');
+      return false;
+    } finally {
+      setProductLoading(false);
+    }
+  }, [moduleAvailable]);
 
   const refresh = useCallback(async () => {
     if (!moduleAvailable || !VideoUnlockModule?.isVideoUnlocked) {
@@ -116,25 +141,8 @@ export function useVideoUnlock(): VideoUnlockApi {
 
   useEffect(() => {
     refresh();
-
-    if (moduleAvailable && VideoUnlockModule?.getProduct) {
-      setProductLoading(true);
-      setProductError(null);
-      withTimeout(VideoUnlockModule.getProduct(), '获取价格')
-        .then((nextProduct) => {
-          setProduct(nextProduct);
-          setProductError(null);
-        })
-        .catch(() => {
-          setProduct(null);
-          setProductError('暂时无法获取价格，请稍后再试。');
-        })
-        .finally(() => setProductLoading(false));
-    } else {
-      setProductLoading(false);
-      setProductError('当前设备暂不支持购买。');
-    }
-  }, [moduleAvailable, refresh]);
+    refreshProduct();
+  }, [refresh, refreshProduct]);
 
   return useMemo(() => ({
     unlocked,
@@ -146,5 +154,6 @@ export function useVideoUnlock(): VideoUnlockApi {
     purchase,
     restore,
     refresh,
-  }), [loading, product, productError, productLoading, purchase, purchasing, refresh, restore, unlocked]);
+    refreshProduct,
+  }), [loading, product, productError, productLoading, purchase, purchasing, refresh, refreshProduct, restore, unlocked]);
 }

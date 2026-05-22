@@ -11,6 +11,7 @@ interface VideoUnlockSheetProps {
   purchasing: boolean;
   onPurchase: () => void;
   onRestore: () => void;
+  onRetryPrice: () => void;
   onClose: () => void;
 }
 
@@ -22,6 +23,7 @@ function VideoUnlockSheetImpl({
   purchasing,
   onPurchase,
   onRestore,
+  onRetryPrice,
   onClose,
 }: VideoUnlockSheetProps) {
   const [waitingText, setWaitingText] = useState('正在连接 App Store...');
@@ -65,13 +67,10 @@ function VideoUnlockSheetImpl({
           </Pressable>
 
           <View style={styles.unlockIconWrap}>
-            <View style={styles.unlockIconPlate}>
-              <View style={styles.unlockRecorderFrame}>
-                <View style={styles.unlockRecorderLeftPane} />
-                <View style={styles.unlockRecorderDivider} />
-                <View style={styles.unlockRecorderRecDot} />
-                <Text style={styles.unlockRecorderRecText}>REC</Text>
-              </View>
+            <View style={styles.unlockRecorderFrame}>
+              <View style={styles.unlockRecorderLeftPane} />
+              <View style={styles.unlockRecorderDivider} />
+              <View style={styles.unlockRecorderRecDot} />
             </View>
           </View>
 
@@ -87,6 +86,16 @@ function VideoUnlockSheetImpl({
           ) : (
             <>
               {productError ? <Text style={styles.unlockErrorText}>{productError}</Text> : null}
+              {productError ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="重新获取价格"
+                  style={styles.unlockRetryButton}
+                  onPress={onRetryPrice}
+                >
+                  <Text style={styles.unlockRetryText}>重新获取价格</Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="立即解锁视频录制"

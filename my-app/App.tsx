@@ -101,11 +101,12 @@ export default function App() {
 
   const onShutterPress = useCallback(() => {
     if (videoLocked && !session.recording && !session.recordingStarting) {
+      videoUnlock.refreshProduct();
       setUnlockSheetVisible(true);
       return;
     }
     session.handleShutterPress(captureMode);
-  }, [session, captureMode, videoLocked]);
+  }, [session, captureMode, videoLocked, videoUnlock]);
 
   const handlePurchaseVideo = useCallback(async () => {
     const ok = await videoUnlock.purchase();
@@ -173,6 +174,7 @@ export default function App() {
         purchasing={videoUnlock.purchasing}
         onPurchase={handlePurchaseVideo}
         onRestore={handleRestorePurchases}
+        onRetryPrice={videoUnlock.refreshProduct}
         onClose={() => {
           if (!videoUnlock.purchasing) setUnlockSheetVisible(false);
         }}
