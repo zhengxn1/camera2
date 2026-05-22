@@ -44,7 +44,6 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
         const ok = await ensureMediaRef.current();
         if (ok) {
           await MediaLibrary.saveToLibraryAsync(event.uri);
-          Alert.alert('已保存', '照片已保存到相册。');
         }
       } catch (e: any) {
         Alert.alert('保存失败', e?.message ?? String(e));
@@ -71,7 +70,6 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
         const ok = await ensureMediaRef.current();
         if (ok) {
           await MediaLibrary.saveToLibraryAsync(event.uri);
-          Alert.alert('已保存', '视频已保存到相册。');
         }
       } catch (e: any) {
         Alert.alert('保存失败', e?.message ?? String(e));
