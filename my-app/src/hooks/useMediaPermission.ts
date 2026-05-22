@@ -1,10 +1,11 @@
-import { useCallback } from 'react';
-import { Alert } from 'react-native';
+import { useCallback, useState } from 'react';
 import * as MediaLibrary from 'expo-media-library';
 
 export interface MediaPermissionApi {
   granted: boolean;
+  blocked: boolean;
   request: () => Promise<void>;
+  dismissBlocked: () => void;
   ensure: () => Promise<boolean>;
 }
 
@@ -13,23 +14,26 @@ export function useMediaPermission(): MediaPermissionApi {
     writeOnly: true,
     granularPermissions: ['photo'],
   });
+  const [blocked, setBlocked] = useState(false);
 
   const granted = !!permission?.granted;
 
   const request = useCallback(async () => {
-    await requestPermission();
+    const result = await requestPermission();
+    setBlocked(!result.granted);
   }, [requestPermission]);
+
+  const dismissBlocked = useCallback(() => {
+    setBlocked(false);
+  }, []);
 
   const ensure = useCallback(async () => {
     if (granted) return true;
     const result = await requestPermission();
+    setBlocked(!result.granted);
     if (result.granted) return true;
-    Alert.alert(
-      '需要相册权限',
-      '请允许访问相册，用于保存照片和视频。',
-    );
     return false;
   }, [granted, requestPermission]);
 
-  return { granted, request, ensure };
+  return { granted, blocked, request, dismissBlocked, ensure };
 }

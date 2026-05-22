@@ -43,7 +43,7 @@ function VideoUnlockSheetImpl({
     ? '正在获取价格...'
     : productError
       ? '暂时无法获取价格'
-      : `立即解锁 - ${product?.displayPrice ?? ''}`;
+      : `立即解锁 ${product?.displayPrice ?? ''}`;
 
   const handleClose = () => {
     if (!purchasing) onClose();
@@ -65,15 +65,18 @@ function VideoUnlockSheetImpl({
           </Pressable>
 
           <View style={styles.unlockIconWrap}>
-            <View style={styles.unlockVideoIconBody} />
-            <View style={styles.unlockVideoIconLens} />
-            <View style={styles.unlockVideoIconBadge}>
-              <Text style={styles.unlockVideoIconBadgeText}>+</Text>
+            <View style={styles.unlockIconPlate}>
+              <View style={styles.unlockRecorderFrame}>
+                <View style={styles.unlockRecorderLeftPane} />
+                <View style={styles.unlockRecorderDivider} />
+                <View style={styles.unlockRecorderRecDot} />
+                <Text style={styles.unlockRecorderRecText}>REC</Text>
+              </View>
             </View>
           </View>
 
           <Text style={styles.unlockTitle}>解锁视频录制</Text>
-          <Text style={styles.unlockBody}>解锁2K视频录制 · 一次购买，终身使用{'\n'}记录精彩瞬间</Text>
+          <Text style={styles.unlockBody}>开启 2K 视频录制。一次购买，终身使用。</Text>
           <View style={styles.unlockDivider} />
 
           {purchasing ? (

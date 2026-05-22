@@ -5,11 +5,13 @@ export type CameraStatus = 'loading' | 'authorized' | 'not_determined' | 'denied
 
 export interface CameraPermissionApi {
   status: CameraStatus;
+  requesting: boolean;
   request: () => Promise<void>;
 }
 
 export function useCameraPermission(): CameraPermissionApi {
   const [status, setStatus] = useState<CameraStatus>('loading');
+  const [requesting, setRequesting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,14 +34,21 @@ export function useCameraPermission(): CameraPermissionApi {
   }, []);
 
   const request = useCallback(async () => {
-    if (!CameraPermissionModule?.requestCameraPermission) return;
+    if (requesting || status === 'authorized') return;
+    if (!CameraPermissionModule?.requestCameraPermission) {
+      setStatus('unavailable');
+      return;
+    }
+    setRequesting(true);
     try {
       const granted = await CameraPermissionModule.requestCameraPermission();
       setStatus(granted ? 'authorized' : 'denied');
     } catch (_e) {
       setStatus('denied');
+    } finally {
+      setRequesting(false);
     }
-  }, []);
+  }, [requesting, status]);
 
-  return { status, request };
+  return { status, requesting, request };
 }

@@ -32,7 +32,7 @@ import { SettingsPopup } from './src/components/SettingsPopup';
 import { VideoUnlockSheet } from './src/components/VideoUnlockSheet';
 
 export default function App() {
-  const { status: cameraStatus, request: requestCamera } = useCameraPermission();
+  const { status: cameraStatus, requesting: cameraRequesting, request: requestCamera } = useCameraPermission();
   const media = useMediaPermission();
   const screen = useScreenSize();
   const { audioLevel, pipPosition, pipSize, resetPip } = useDualCameraView();
@@ -61,6 +61,12 @@ export default function App() {
       DualCameraModule?.stopSession?.();
     };
   }, [cameraStatus]);
+
+  useEffect(() => {
+    if (cameraStatus === 'not_determined' && !cameraRequesting) {
+      requestCamera();
+    }
+  }, [cameraRequesting, cameraStatus, requestCamera]);
 
   const handleZoomChange = useCallback((cam: CameraSide, level: number) => {
     const min = cam === 'back' ? 0.5 : 1;
@@ -121,7 +127,7 @@ export default function App() {
   const closeMenu = useCallback(() => setMenuExpanded(false), []);
 
   if (cameraStatus !== 'authorized') {
-    return <PermissionGate status={cameraStatus} onRequest={requestCamera} />;
+    return <PermissionGate status={cameraStatus} requesting={cameraRequesting} onRequest={requestCamera} />;
   }
 
   return (
@@ -190,7 +196,9 @@ export default function App() {
         />
       ) : null}
 
-      {!media.granted ? <MediaPermissionBanner onRequest={media.request} /> : null}
+      {media.blocked ? (
+        <MediaPermissionBanner onRequest={media.request} onDismiss={media.dismissBlocked} />
+      ) : null}
       {session.saving ? <SavingOverlay /> : null}
       {(session.recording || session.recordingStarting) ? (
         <RecordingIndicator starting={session.recordingStarting} />

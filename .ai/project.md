@@ -1,5 +1,5 @@
 status: draft
-last-verified: 2026-05-21
+last-verified: 2026-05-22
 
 # Project Context
 
@@ -47,3 +47,5 @@ last-verified: 2026-05-21
 - 2026-05-15: Adjusted `my-app/src/components/ZoomDial.tsx` so constrained split/PIP zoom controls keep the standard circular preset button format and collapse to two buttons: the active preset plus a cycle-to-next preset button.
 - 2026-05-15: Added `.ai/specs/zoom-pill-canvas-placement-20260515.md` and reworked zoom controls into single tap-to-cycle pills positioned at the bottom center of each actual preview rect, including PIP-internal placement.
 - 2026-05-21: Added `.ai/specs/ios-permission-unlock-purchase-ui-20260521.md` and implemented Chinese iOS-style camera/media permission dialogs, centered video unlock purchase card, StoreKit localized `displayPrice` purchase button, visible App Store waiting state, red unlocked video shutter state, and removal of `[VideoUnlock]` payment debug logs. Verified with `npx tsc --noEmit` in `my-app/`.
+- 2026-05-22: Added `.ai/specs/ios-permission-dialog-dedup-20260522.md` and reduced duplicated iOS permission prompts: camera now auto-triggers the system authorization prompt when undetermined, media library permission is requested only during save, and app-owned fallback prompts use the light iOS-style dialog treatment. Verified with `npx tsc --noEmit` in `my-app/`.
+- 2026-05-22: Added `.ai/specs/video-unlock-purchase-dialog-polish-20260522.md` and refreshed the video unlock purchase modal with a light iOS-style card, white circular REC icon without a lock, localized StoreKit `displayPrice`-only CTA text, and darker readable restore/error states. Verified with `npx tsc --noEmit` in `my-app/`.
