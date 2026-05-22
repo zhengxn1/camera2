@@ -146,7 +146,7 @@ export function useVideoUnlock(): VideoUnlockApi {
     purchasingRef.current = true;
     setPurchasing(true);
     try {
-      const result = await VideoUnlockModule.purchaseVideoUnlock(product.id);
+      const result = await VideoUnlockModule.purchaseVideoUnlock();
       const next = !!result?.unlocked;
       unlockedRef.current = next;
       setUnlocked(next);

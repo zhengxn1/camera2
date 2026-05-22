@@ -54,7 +54,7 @@ export interface VideoUnlockResult {
 export interface VideoUnlockModuleSpec {
   getProduct?: () => Promise<VideoUnlockProduct>;
   isVideoUnlocked?: () => Promise<boolean>;
-  purchaseVideoUnlock?: (productId?: string) => Promise<VideoUnlockResult>;
+  purchaseVideoUnlock?: () => Promise<VideoUnlockResult>;
   restorePurchases?: () => Promise<VideoUnlockResult>;
 }
 

@@ -60,15 +60,10 @@ final class VideoUnlockModule: NSObject {
     }
   }
 
-  @objc(purchaseVideoUnlock:resolver:rejecter:)
-  func purchaseVideoUnlock(productID: String?, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+  @objc(purchaseVideoUnlock:rejecter:)
+  func purchaseVideoUnlock(resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
     guard #available(iOS 15.0, *) else {
       rejectUnsupportedOS(reject)
-      return
-    }
-
-    if let productID, productID != videoUnlockProductID {
-      reject("unexpected_product", "The requested product does not match the video unlock product.", nil)
       return
     }
 
@@ -82,7 +77,7 @@ final class VideoUnlockModule: NSObject {
       return
     }
 
-    Task {
+    Task { @MainActor in
       defer {
         endPurchase()
       }

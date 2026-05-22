@@ -8,8 +8,7 @@ RCT_EXTERN_METHOD(getProduct:(RCTPromiseResolveBlock)resolve
 RCT_EXTERN_METHOD(isVideoUnlocked:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
-RCT_EXTERN_METHOD(purchaseVideoUnlock:(NSString *)productID
-                  resolver:(RCTPromiseResolveBlock)resolve
+RCT_EXTERN_METHOD(purchaseVideoUnlock:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
 
 RCT_EXTERN_METHOD(restorePurchases:(RCTPromiseResolveBlock)resolve
