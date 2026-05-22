@@ -6,6 +6,8 @@ import StoreKit
 final class VideoUnlockModule: NSObject {
   private let videoUnlockProductID = "com.zhengning.dualcamera.unlock"
   private var updatesTask: Task<Void, Never>?
+  private let purchaseStateQueue = DispatchQueue(label: "com.zhengning.dualcamera.video-unlock.purchase")
+  private var purchaseInProgress = false
 
   override init() {
     super.init()
@@ -58,15 +60,42 @@ final class VideoUnlockModule: NSObject {
     }
   }
 
-  @objc(purchaseVideoUnlock:rejecter:)
-  func purchaseVideoUnlock(resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+  @objc(purchaseVideoUnlock:resolver:rejecter:)
+  func purchaseVideoUnlock(productID: String?, resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
     guard #available(iOS 15.0, *) else {
       rejectUnsupportedOS(reject)
       return
     }
 
+    if let productID, productID != videoUnlockProductID {
+      reject("unexpected_product", "The requested product does not match the video unlock product.", nil)
+      return
+    }
+
+    guard beginPurchase() else {
+      Task {
+        resolve([
+          "unlocked": await hasVideoUnlockEntitlement(),
+          "pending": true
+        ])
+      }
+      return
+    }
+
     Task {
+      defer {
+        endPurchase()
+      }
+
       do {
+        if await hasVideoUnlockEntitlement() {
+          resolve([
+            "unlocked": true,
+            "alreadyPurchased": true
+          ])
+          return
+        }
+
         let product = try await loadVideoUnlockProduct()
         let result = try await product.purchase()
 
@@ -127,6 +156,23 @@ final class VideoUnlockModule: NSObject {
 
   private func rejectUnsupportedOS(_ reject: RCTPromiseRejectBlock) {
     reject("storekit2_unavailable", "Video unlock purchases require iOS 15 or later.", nil)
+  }
+
+  private func beginPurchase() -> Bool {
+    purchaseStateQueue.sync {
+      if purchaseInProgress {
+        return false
+      }
+
+      purchaseInProgress = true
+      return true
+    }
+  }
+
+  private func endPurchase() {
+    purchaseStateQueue.sync {
+      purchaseInProgress = false
+    }
   }
 
   @available(iOS 15.0, *)

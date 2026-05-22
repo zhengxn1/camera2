@@ -142,15 +142,18 @@ interface FlipIconProps {
 }
 
 function FlipIconImpl({ active }: FlipIconProps) {
-  const stroke = active ? styles.flipIconStrokeActive : styles.flipIconStroke;
-  const cap = active ? styles.flipIconCapActive : styles.flipIconCap;
+  const tone = active ? styles.flipIconActive : styles.flipIconTone;
 
   return (
     <View style={styles.flipIcon}>
-      <View style={[styles.flipIconArcTop, stroke]} />
-      <View style={[styles.flipIconArcBottom, stroke]} />
-      <View style={[styles.flipIconCapTopRight, cap]} />
-      <View style={[styles.flipIconCapBottomLeft, cap]} />
+      <View style={[styles.flipCameraBody, tone]}>
+        <View style={[styles.flipCameraLens, tone]} />
+        <View style={[styles.flipCameraDot, tone]} />
+      </View>
+      <View style={[styles.flipArrowTop, tone]} />
+      <View style={[styles.flipArrowTopHead, tone]} />
+      <View style={[styles.flipArrowBottom, tone]} />
+      <View style={[styles.flipArrowBottomHead, tone]} />
     </View>
   );
 }

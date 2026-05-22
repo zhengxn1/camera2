@@ -46,6 +46,7 @@ export interface VideoUnlockResult {
   unlocked: boolean;
   cancelled?: boolean;
   pending?: boolean;
+  alreadyPurchased?: boolean;
   unknown?: boolean;
   transactionId?: string;
 }
@@ -53,7 +54,7 @@ export interface VideoUnlockResult {
 export interface VideoUnlockModuleSpec {
   getProduct?: () => Promise<VideoUnlockProduct>;
   isVideoUnlocked?: () => Promise<boolean>;
-  purchaseVideoUnlock?: () => Promise<VideoUnlockResult>;
+  purchaseVideoUnlock?: (productId?: string) => Promise<VideoUnlockResult>;
   restorePurchases?: () => Promise<VideoUnlockResult>;
 }
 

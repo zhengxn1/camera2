@@ -37,6 +37,8 @@ export function useVideoUnlock(): VideoUnlockApi {
   const [productError, setProductError] = useState<string | null>(null);
   const [product, setProduct] = useState<VideoUnlockProduct | null>(null);
   const unlockedRef = useRef(false);
+  const productRequestRef = useRef(0);
+  const purchasingRef = useRef(false);
 
   useEffect(() => {
     unlockedRef.current = unlocked;
@@ -45,6 +47,9 @@ export function useVideoUnlock(): VideoUnlockApi {
   const moduleAvailable = Platform.OS === 'ios' && !!VideoUnlockModule;
 
   const refreshProduct = useCallback(async () => {
+    const requestId = productRequestRef.current + 1;
+    productRequestRef.current = requestId;
+
     if (!moduleAvailable || !VideoUnlockModule?.getProduct) {
       setProductLoading(false);
       setProduct(null);
@@ -53,18 +58,23 @@ export function useVideoUnlock(): VideoUnlockApi {
     }
 
     setProductLoading(true);
+    setProduct(null);
     setProductError(null);
     try {
       const nextProduct = await withTimeout(VideoUnlockModule.getProduct(), '获取价格');
+      if (productRequestRef.current !== requestId) return false;
       setProduct(nextProduct);
       setProductError(null);
       return true;
     } catch {
+      if (productRequestRef.current !== requestId) return false;
       setProduct(null);
       setProductError('暂时无法获取价格，请稍后再试。');
       return false;
     } finally {
-      setProductLoading(false);
+      if (productRequestRef.current === requestId) {
+        setProductLoading(false);
+      }
     }
   }, [moduleAvailable]);
 
@@ -92,6 +102,11 @@ export function useVideoUnlock(): VideoUnlockApi {
       return false;
     }
 
+    if (purchasingRef.current) {
+      return false;
+    }
+
+    purchasingRef.current = true;
     setPurchasing(true);
     try {
       const result = await withTimeout(VideoUnlockModule.restorePurchases(), '恢复购买');
@@ -104,6 +119,7 @@ export function useVideoUnlock(): VideoUnlockApi {
       Alert.alert('恢复购买失败', '请稍后再试。');
       return false;
     } finally {
+      purchasingRef.current = false;
       setPurchasing(false);
     }
   }, [moduleAvailable]);
@@ -114,14 +130,23 @@ export function useVideoUnlock(): VideoUnlockApi {
       return false;
     }
 
-    if (!product) {
+    if (purchasingRef.current) {
+      return false;
+    }
+
+    if (unlockedRef.current) {
+      return true;
+    }
+
+    if (productLoading || !product) {
       Alert.alert('暂时无法购买', productError ?? '暂时无法获取价格，请稍后再试。');
       return false;
     }
 
+    purchasingRef.current = true;
     setPurchasing(true);
     try {
-      const result = await VideoUnlockModule.purchaseVideoUnlock();
+      const result = await VideoUnlockModule.purchaseVideoUnlock(product.id);
       const next = !!result?.unlocked;
       unlockedRef.current = next;
       setUnlocked(next);
@@ -135,9 +160,10 @@ export function useVideoUnlock(): VideoUnlockApi {
       Alert.alert('购买失败', '请稍后再试。');
       return false;
     } finally {
+      purchasingRef.current = false;
       setPurchasing(false);
     }
-  }, [moduleAvailable, product, productError]);
+  }, [moduleAvailable, product, productError, productLoading]);
 
   useEffect(() => {
     refresh();

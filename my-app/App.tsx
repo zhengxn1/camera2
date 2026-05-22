@@ -99,9 +99,15 @@ export default function App() {
 
   const videoLocked = captureMode === 'video' && !videoUnlock.unlocked;
 
-  const onShutterPress = useCallback(() => {
+  const onShutterPress = useCallback(async () => {
     if (videoLocked && !session.recording && !session.recordingStarting) {
-      videoUnlock.refreshProduct();
+      const alreadyUnlocked = await videoUnlock.refresh();
+      if (alreadyUnlocked) {
+        session.handleShutterPress(captureMode);
+        return;
+      }
+
+      void videoUnlock.refreshProduct();
       setUnlockSheetVisible(true);
       return;
     }
