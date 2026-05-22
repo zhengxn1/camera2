@@ -102,7 +102,7 @@ function BottomBarImpl({
           accessibilityRole="button"
           accessibilityLabel="切换前后画面"
         >
-          <Text style={styles.flipBtnText}>↔</Text>
+          <FlipIcon active={isFlipped} />
         </Pressable>
       </View>
     </>
@@ -136,6 +136,27 @@ function ModeButtonImpl({ selected, disabled, onPress, label, icon }: ModeButton
 
 const ModeButton = memo(ModeButtonImpl);
 ModeButton.displayName = 'ModeButton';
+
+interface FlipIconProps {
+  active: boolean;
+}
+
+function FlipIconImpl({ active }: FlipIconProps) {
+  const stroke = active ? styles.flipIconStrokeActive : styles.flipIconStroke;
+  const cap = active ? styles.flipIconCapActive : styles.flipIconCap;
+
+  return (
+    <View style={styles.flipIcon}>
+      <View style={[styles.flipIconArcTop, stroke]} />
+      <View style={[styles.flipIconArcBottom, stroke]} />
+      <View style={[styles.flipIconCapTopRight, cap]} />
+      <View style={[styles.flipIconCapBottomLeft, cap]} />
+    </View>
+  );
+}
+
+const FlipIcon = memo(FlipIconImpl);
+FlipIcon.displayName = 'FlipIcon';
 
 interface ModeIconProps {
   name: ModeIconName;
