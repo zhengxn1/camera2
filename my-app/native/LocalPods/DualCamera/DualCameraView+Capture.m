@@ -19,6 +19,132 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
 
 @implementation DualCameraView (Capture)
 
+- (CGSize)limitedBeautyPreviewSizeForRawFrame:(CIImage *)rawFrame preferredSize:(CGSize)preferredSize {
+  CGSize rawSize = rawFrame.extent.size;
+  if (rawSize.width <= 1 || rawSize.height <= 1) return CGSizeZero;
+
+  CGFloat width = preferredSize.width > 1 ? preferredSize.width : rawSize.width;
+  CGFloat height = preferredSize.height > 1 ? preferredSize.height : rawSize.height;
+  CGFloat maxEdge = MAX(width, height);
+  CGFloat limit = 720.0;
+  if (maxEdge > limit) {
+    CGFloat scale = limit / maxEdge;
+    width *= scale;
+    height *= scale;
+  }
+  width = MAX(2.0, floor(width));
+  height = MAX(2.0, floor(height));
+  return CGSizeMake(width, height);
+}
+
+- (void)finishFrontBeautyProcessingPass {
+  BOOL needsAnother = NO;
+  @synchronized(self) {
+    needsAnother = self.beautyProcessingNeedsAnotherFrame;
+    self.beautyProcessingInFlight = NO;
+    self.beautyProcessingNeedsAnotherFrame = NO;
+  }
+  if (needsAnother) {
+    [self scheduleFrontBeautyProcessingIfNeeded];
+  }
+}
+
+- (void)scheduleFrontBeautyProcessingIfNeeded {
+  if (!self.frontBeautyEnabled || !self.beautyProcessingQueue) return;
+
+  CIImage *rawFrame = nil;
+  CGSize targetSize = CGSizeZero;
+  NSInteger previewGeneration = -1;
+  NSString *previewLayout = nil;
+  BOOL previewMirrored = NO;
+  BOOL shouldProcessFullFrame = NO;
+  @synchronized(self) {
+    if (self.beautyProcessingInFlight) {
+      self.beautyProcessingNeedsAnotherFrame = YES;
+      return;
+    }
+    rawFrame = self.latestRawFrontFrame;
+    targetSize = self.beautyPreviewTargetSize;
+    previewGeneration = self.beautyLayoutGeneration;
+    previewLayout = [self.currentLayout copy] ?: @"back";
+    previewMirrored = self.frontPreviewMirrored;
+    shouldProcessFullFrame = self.isDualRecordingActive;
+    if (!rawFrame) return;
+    self.beautyProcessingInFlight = YES;
+    self.beautyProcessingNeedsAnotherFrame = NO;
+  }
+
+  dispatch_async(self.beautyProcessingQueue, ^{
+    @autoreleasepool {
+      CGSize previewSize = [self limitedBeautyPreviewSizeForRawFrame:rawFrame preferredSize:targetSize];
+      CIImage *previewFrame = nil;
+      if (previewSize.width > 1 && previewSize.height > 1) {
+        CGRect previewRect = CGRectMake(0, 0, previewSize.width, previewSize.height);
+        CIImage *preparedPreview = [self preparedCameraImage:rawFrame
+                                                  targetRect:previewRect
+                                                  canvasSize:previewSize
+                                                    mirrored:previewMirrored
+                                                 highQuality:NO];
+        previewFrame = [self beautifiedFrontImage:preparedPreview ?: rawFrame] ?: preparedPreview;
+      }
+
+      CIImage *fullFrame = shouldProcessFullFrame ? ([self beautifiedFrontImage:rawFrame] ?: rawFrame) : nil;
+      BOOL canPublishPreviewFrame = NO;
+      NSString *dropReason = nil;
+      @synchronized(self) {
+        BOOL generationMatches = self.beautyLayoutGeneration == previewGeneration;
+        NSString *currentLayout = self.currentLayout ?: @"back";
+        NSString *capturedLayout = previewLayout ?: @"back";
+        BOOL layoutMatches = [currentLayout isEqualToString:capturedLayout];
+        BOOL targetMatches = fabs(self.beautyPreviewTargetSize.width - targetSize.width) <= 2.0 &&
+                             fabs(self.beautyPreviewTargetSize.height - targetSize.height) <= 2.0;
+        BOOL mirrorMatches = self.frontPreviewMirrored == previewMirrored;
+        canPublishPreviewFrame = previewFrame && generationMatches && layoutMatches && targetMatches && mirrorMatches;
+        if (previewFrame) {
+          if (canPublishPreviewFrame) {
+            self.latestBeautyPreviewFrame = previewFrame;
+            self.latestBeautyPreviewGeneration = previewGeneration;
+            self.latestBeautyPreviewLayoutMode = previewLayout;
+            self.latestBeautyPreviewTargetSize = targetSize;
+            self.latestBeautyPreviewMirrored = previewMirrored;
+          } else if (!generationMatches) {
+            dropReason = @"staleGeneration";
+          } else if (!layoutMatches) {
+            dropReason = @"layoutMismatch";
+          } else if (!targetMatches) {
+            dropReason = @"targetMismatch";
+          } else if (!mirrorMatches) {
+            dropReason = @"mirrorMismatch";
+          } else {
+            dropReason = @"emptyFrame";
+          }
+        }
+        if (fullFrame) {
+          self.latestFrontFrame = fullFrame;
+        } else if (!self.latestFrontFrame) {
+          self.latestFrontFrame = rawFrame;
+        }
+      }
+      if (dropReason) {
+        NSLog(@"[BeautyProbe][PreviewVersion] dropReason=%@ capturedGen=%ld currentGen=%ld capturedLayout=%@ currentLayout=%@ capturedTarget=%@ currentTarget=%@",
+              dropReason,
+              (long)previewGeneration,
+              (long)self.beautyLayoutGeneration,
+              previewLayout ?: @"nil",
+              self.currentLayout ?: @"nil",
+              NSStringFromCGSize(targetSize),
+              NSStringFromCGSize(self.beautyPreviewTargetSize));
+      }
+
+      dispatch_async(dispatch_get_main_queue(), ^{
+        [self updateBeautyPreviewVisibility];
+        [self renderBeautyPreviewIfNeeded];
+      });
+      [self finishFrontBeautyProcessingPass];
+    }
+  });
+}
+
 #pragma mark - Entry points
 
 - (void)internalTakePhoto {
@@ -65,12 +191,17 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
 // Saves the same composited camera frames used by realtime recording. This keeps
 // stills aligned with preview/recording and avoids MultiCam PhotoOutput races.
 - (void)captureWysiwygDualPhotoWithCanvasSize:(CGSize)canvasSize {
-  CIImage *frontFrame = nil;
-  CIImage *backFrame = nil;
-  @synchronized(self) {
-    frontFrame = self.latestFrontFrame;
-    backFrame = self.latestBackFrame;
-  }
+	  CIImage *frontFrame = nil;
+	  CIImage *rawFrontFrame = nil;
+	  CIImage *backFrame = nil;
+	  @synchronized(self) {
+	    rawFrontFrame = self.latestRawFrontFrame;
+	    frontFrame = self.latestFrontFrame;
+	    backFrame = self.latestBackFrame;
+	  }
+	  if (self.frontBeautyEnabled && rawFrontFrame) {
+	    frontFrame = [self beautifiedFrontImage:rawFrontFrame] ?: rawFrontFrame;
+	  }
 
   BOOL isDual = [self isDualLayout:self.currentLayout];
   BOOL needsFront = isDual || [self.currentLayout isEqualToString:@"front"];
@@ -107,16 +238,56 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
                                                           front:frontFrame
                                                            back:backFrame
                                                     highQuality:YES];
-      NSString *path = [self saveCIImageAsJPEG:composited];
+      NSString *path = [self saveCIImageAsJPEG:composited prefix:@"dual_composited_"];
+      BOOL saveSeparatePhotos = [self.videoSaveMode isEqualToString:@"all3"] &&
+                                self.usingMultiCam &&
+                                [self isDualLayout:self.currentLayout];
+      NSString *frontPath = nil;
+      NSString *backPath = nil;
+      if (saveSeparatePhotos) {
+        frontPath = [self saveSeparateCameraPhotoImage:frontFrame
+                                              mirrored:self.frontPreviewMirrored
+                                                prefix:@"dual_front_"];
+        backPath = [self saveSeparateCameraPhotoImage:backFrame
+                                             mirrored:self.backOutputMirrored
+                                               prefix:@"dual_back_"];
+      }
       dispatch_async(dispatch_get_main_queue(), ^{
-        if (path) {
-          [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
+        if (path && (!saveSeparatePhotos || (frontPath && backPath))) {
+          NSString *combinedURI = [NSString stringWithFormat:@"file://%@", path];
+          if (saveSeparatePhotos) {
+            NSMutableDictionary *uris = [@{@"combined": combinedURI} mutableCopy];
+            uris[@"front"] = [NSString stringWithFormat:@"file://%@", frontPath];
+            uris[@"back"] = [NSString stringWithFormat:@"file://%@", backPath];
+            [self emitPhotoSaved:combinedURI uris:uris];
+          } else {
+            [self emitPhotoSaved:combinedURI];
+          }
         } else {
           [self emitError:@"Failed to save photo"];
         }
       });
     }
   });
+}
+
+- (NSString *)saveSeparateCameraPhotoImage:(CIImage *)image
+                                  mirrored:(BOOL)mirrored
+                                    prefix:(NSString *)prefix {
+  if (!image) return nil;
+
+  CGFloat width = floor(image.extent.size.width);
+  CGFloat height = floor(image.extent.size.height);
+  if (width <= 0 || height <= 0) return nil;
+
+  CGSize outputSize = CGSizeMake(width, height);
+  CGRect fullRect = CGRectMake(0, 0, outputSize.width, outputSize.height);
+  CIImage *prepared = [self preparedCameraImage:image
+                                    targetRect:fullRect
+                                    canvasSize:outputSize
+                                      mirrored:mirrored
+                                   highQuality:YES];
+  return [self saveCIImageAsJPEG:prepared prefix:prefix];
 }
 
 - (void)applyHighQualityPhotoSettings:(AVCapturePhotoSettings *)settings
@@ -157,10 +328,10 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
         [self emitRecordingError:@"Realtime recording unavailable — video data outputs are not configured."];
         return;
       }
-      __block BOOL hasBothFrames = NO;
-      @synchronized(self) {
-        hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
-      }
+	    __block BOOL hasBothFrames = NO;
+	    @synchronized(self) {
+	      hasBothFrames = (self.latestFrontFrame || self.latestRawFrontFrame) && self.latestBackFrame;
+	    }
       if (!hasBothFrames) {
         self.pendingStartRecordingAfterWarmup = YES;
         self.pendingStartRecordingCanvasSize = canvasSizeForRecording;
@@ -345,9 +516,12 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
   BOOL isBackOutput = (output == self.backVideoDataOutput);
   if (!isFrontOutput && !isBackOutput) return;
 
-  static BOOL didLogFrontSample = NO;
-  static BOOL didLogBackSample = NO;
-  BOOL shouldLogSample = (isFrontOutput && !didLogFrontSample) || (isBackOutput && !didLogBackSample);
+	  static BOOL didLogFrontSample = NO;
+	  static BOOL didLogBackSample = NO;
+	  static NSInteger beautyProbeFrontSampleCount = 0;
+	  static CFTimeInterval beautyProbeLastFrontSampleAt = 0;
+	  static CFTimeInterval beautyProbeLastFrontLogAt = 0;
+	  BOOL shouldLogSample = (isFrontOutput && !didLogFrontSample) || (isBackOutput && !didLogBackSample);
   if (shouldLogSample) {
     if (isFrontOutput) didLogFrontSample = YES;
     if (isBackOutput) didLogBackSample = YES;
@@ -375,24 +549,75 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
           formatExtensions ?: @{});
   }
 
-  // Store raw frames (WYSIWYG: save what preview shows — mirroring applied at compositing time)
-  if (isFrontOutput) {
-    @synchronized(self) {
-      self.latestFrontFrame = ciImage;
-    }
+	  // Store the same front frame that preview, photo, and realtime recording use.
+	  // Mirroring is still applied at composition time so the preview and saved
+	  // media share one camera-frame source.
+	  if (isFrontOutput) {
+	    beautyProbeFrontSampleCount += 1;
+	    CFTimeInterval frontSampleNow = CACurrentMediaTime();
+	    CFTimeInterval frontSampleGapMs = beautyProbeLastFrontSampleAt > 0
+	      ? (frontSampleNow - beautyProbeLastFrontSampleAt) * 1000.0
+	      : 0.0;
+	    beautyProbeLastFrontSampleAt = frontSampleNow;
+	    BOOL shouldLogFrontProbe = beautyProbeFrontSampleCount == 1 ||
+	                               beautyProbeFrontSampleCount % 60 == 0 ||
+	                               frontSampleGapMs > 120.0 ||
+	                               frontSampleNow - beautyProbeLastFrontLogAt > 2.0;
+	    if (shouldLogFrontProbe) {
+	      beautyProbeLastFrontLogAt = frontSampleNow;
+	      NSLog(@"[BeautyProbe][Sample] front count=%ld gapMs=%.2f enabled=%d layout=%@ usingMultiCam=%d latestFront=%d extent=%@ scheduled=%d",
+	            (long)beautyProbeFrontSampleCount,
+	            frontSampleGapMs,
+	            self.frontBeautyEnabled,
+	            self.currentLayout ?: @"nil",
+	            self.usingMultiCam,
+	            self.latestFrontFrame != nil,
+	            NSStringFromCGRect(ciImage.extent),
+	            self.beautyPreviewFrameScheduled);
+	    }
+	    if (frontSampleGapMs > 120.0) {
+	      NSLog(@"[BeautyProbe][FrameGap] front gapMs=%.2f count=%ld layout=%@ enabled=%d usingMultiCam=%d",
+	            frontSampleGapMs,
+	            (long)beautyProbeFrontSampleCount,
+	            self.currentLayout ?: @"nil",
+	            self.frontBeautyEnabled,
+	            self.usingMultiCam);
+	    }
+	    @synchronized(self) {
+	      self.latestRawFrontFrame = ciImage;
+	      if (!self.frontBeautyEnabled) {
+	        self.latestFrontFrame = ciImage;
+	        self.latestBeautyPreviewFrame = nil;
+	        self.latestBeautyPreviewGeneration = -1;
+	        self.latestBeautyPreviewLayoutMode = nil;
+	        self.latestBeautyPreviewTargetSize = CGSizeZero;
+	      }
+	    }
+	    [self scheduleFrontBeautyProcessingIfNeeded];
   } else {
     @synchronized(self) {
       self.latestBackFrame = ciImage;
     }
   }
 
+  if (isFrontOutput) {
+    if (!self.beautyPreviewFrameScheduled) {
+      self.beautyPreviewFrameScheduled = YES;
+      dispatch_async(dispatch_get_main_queue(), ^{
+        self.beautyPreviewFrameScheduled = NO;
+        [self updateBeautyPreviewVisibility];
+        [self renderBeautyPreviewIfNeeded];
+      });
+    }
+  }
+
   if (self.usingMultiCam && !self.isDualRecordingActive &&
       self.realtimeRecordingState == DualCameraRealtimeRecordingStateIdle &&
       !self.realtimePipelineWarmed && !self.realtimePipelineWarmupInProgress) {
-    __block BOOL hasBothFrames = NO;
-    @synchronized(self) {
-      hasBothFrames = self.latestFrontFrame && self.latestBackFrame;
-    }
+	    __block BOOL hasBothFrames = NO;
+	    @synchronized(self) {
+	      hasBothFrames = (self.latestFrontFrame || self.latestRawFrontFrame) && self.latestBackFrame;
+	    }
     if (hasBothFrames) {
       dispatch_async(dispatch_get_main_queue(), ^{
         CGSize canvasSize = self.bounds.size;
@@ -431,6 +656,10 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
 
 - (void)emitPhotoSaved:(NSString *)uri {
   [[DualCameraEventEmitter shared] sendPhotoSaved:uri];
+}
+
+- (void)emitPhotoSaved:(NSString *)uri uris:(NSDictionary *)uris {
+  [[DualCameraEventEmitter shared] sendPhotoSaved:uri uris:uris];
 }
 
 - (void)emitError:(NSString *)error {

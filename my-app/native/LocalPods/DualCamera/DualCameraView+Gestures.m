@@ -39,6 +39,11 @@
   UIView *pipView = [self pipPreviewView];
   CGRect canvas = [self canvasBoundsForAspectRatio];
   if (canvas.size.width <= 0 || canvas.size.height <= 0) return;
+  if (self.frontBeautyEnabled &&
+      (pan.state == UIGestureRecognizerStateBegan ||
+       pan.state == UIGestureRecognizerStateChanged)) {
+    [self invalidateBeautyPreviewForLayoutChange:@"pipPan"];
+  }
   CGPoint translation = [pan translationInView:self];
   CGPoint center = pipView.center;
   center.x += translation.x;
@@ -67,6 +72,11 @@
 - (void)handlePipPinch:(UIPinchGestureRecognizer *)pinch {
   if (pinch.state == UIGestureRecognizerStateBegan) {
     self.lastPipSize = self.pipSize;
+  }
+  if (self.frontBeautyEnabled &&
+      (pinch.state == UIGestureRecognizerStateBegan ||
+       pinch.state == UIGestureRecognizerStateChanged)) {
+    [self invalidateBeautyPreviewForLayoutChange:@"pipPinch"];
   }
   CGFloat newSize = self.lastPipSize * pinch.scale;
   self.pipSize = MAX(0.05, MIN(0.5, newSize));

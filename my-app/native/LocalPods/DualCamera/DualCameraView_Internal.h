@@ -12,6 +12,9 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <ImageIO/ImageIO.h>
+#import <Metal/Metal.h>
+#import <MetalKit/MetalKit.h>
+#import <Vision/Vision.h>
 #import <math.h>
 
 // ---------------------------------------------------------------------------
@@ -89,9 +92,39 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) AVCaptureAudioDataOutput *audioDataOutput;
 @property (nonatomic, strong) dispatch_queue_t videoDataOutputQueue;
 @property (nonatomic, strong) dispatch_queue_t realtimeRenderQueue;
+@property (nonatomic, strong) dispatch_queue_t beautyProcessingQueue;
+@property (nonatomic, strong) CIImage *latestRawFrontFrame;
 @property (nonatomic, strong) CIImage *latestFrontFrame;
 @property (nonatomic, strong) CIImage *latestBackFrame;
 @property (nonatomic, strong) CIContext *ciContext;
+@property (nonatomic, strong) id<MTLDevice> metalDevice;
+@property (nonatomic, strong) id<MTLCommandQueue> metalCommandQueue;
+@property (nonatomic, strong) MTKView *beautyPreviewView;
+@property (nonatomic, strong) CIImage *latestBeautyPreviewFrame;
+@property (nonatomic, assign) CGSize beautyPreviewTargetSize;
+@property (nonatomic, assign) NSInteger beautyLayoutGeneration;
+@property (nonatomic, assign) NSInteger latestBeautyPreviewGeneration;
+@property (nonatomic, copy) NSString *latestBeautyPreviewLayoutMode;
+@property (nonatomic, assign) CGSize latestBeautyPreviewTargetSize;
+@property (nonatomic, assign) BOOL latestBeautyPreviewMirrored;
+@property (nonatomic, assign) BOOL beautyProcessingInFlight;
+@property (nonatomic, assign) BOOL beautyProcessingNeedsAnotherFrame;
+@property (nonatomic, assign) BOOL beautyPreviewFrameScheduled;
+@property (nonatomic, assign) BOOL layoutUpdateScheduled;
+@property (nonatomic, assign) BOOL beautyLayoutChanging;
+@property (nonatomic, assign) CFTimeInterval lastBeautyLayoutChangeTime;
+@property (nonatomic, assign) CFTimeInterval lastBeautyPreviewRenderTime;
+@property (nonatomic, assign) NSInteger beautyPreviewSkippedRenderCount;
+@property (nonatomic, assign) CFTimeInterval lastBeautyLayoutDiagLogTime;
+@property (nonatomic, assign) CFTimeInterval lastBeautyPreviewDiagLogTime;
+@property (nonatomic, assign) CFTimeInterval lastBeautyRenderDiagLogTime;
+@property (nonatomic, assign) CFTimeInterval lastBeautyFaceDiagLogTime;
+@property (nonatomic, strong) CIImage *frontBeautyMask;
+@property (nonatomic, assign) CGRect frontBeautyMaskFaceBounds;
+@property (nonatomic, assign) CGSize frontBeautyMaskImageSize;
+@property (nonatomic, assign) NSInteger frontBeautyFrameCounter;
+@property (nonatomic, strong) VNFaceObservation *frontBeautyFaceObservation;
+@property (nonatomic, assign) NSInteger frontBeautyFramesSinceFace;
 
 // Dual compositing state
 @property (nonatomic, strong) NSMutableDictionary *pendingDualPhotos;
@@ -104,6 +137,14 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) AVAssetWriterInput *realtimeVideoInput;
 @property (nonatomic, strong) AVAssetWriterInput *realtimeAudioInput;
 @property (nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *realtimePixelBufferAdaptor;
+@property (nonatomic, strong) AVAssetWriter *frontRealtimeAssetWriter;
+@property (nonatomic, strong) AVAssetWriterInput *frontRealtimeVideoInput;
+@property (nonatomic, strong) AVAssetWriterInput *frontRealtimeAudioInput;
+@property (nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *frontRealtimePixelBufferAdaptor;
+@property (nonatomic, strong) AVAssetWriter *backRealtimeAssetWriter;
+@property (nonatomic, strong) AVAssetWriterInput *backRealtimeVideoInput;
+@property (nonatomic, strong) AVAssetWriterInput *backRealtimeAudioInput;
+@property (nonatomic, strong) AVAssetWriterInputPixelBufferAdaptor *backRealtimePixelBufferAdaptor;
 @property (nonatomic, strong) NSDictionary *warmedRealtimeVideoSettings;
 @property (nonatomic, strong) NSDictionary *warmedRealtimePixelBufferAttributes;
 @property (nonatomic, strong) NSDictionary *warmedRealtimeAudioSettings;
@@ -115,19 +156,28 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) BOOL pendingStartRecordingAfterWarmup;
 @property (nonatomic, assign) CGSize pendingStartRecordingCanvasSize;
 @property (nonatomic, copy) NSString *realtimeRecordingPath;
+@property (nonatomic, copy) NSString *frontRealtimeRecordingPath;
+@property (nonatomic, copy) NSString *backRealtimeRecordingPath;
 @property (nonatomic, copy) NSString *realtimeRecordingAspectRatio;
 @property (nonatomic, assign) CGSize realtimeOutputSize;
+@property (nonatomic, assign) CGSize frontRealtimeOutputSize;
+@property (nonatomic, assign) CGSize backRealtimeOutputSize;
 @property (nonatomic, assign) DualCameraRealtimeRecordingState realtimeRecordingState;
 @property (nonatomic, assign) BOOL realtimeWriterStarted;
+@property (nonatomic, assign) BOOL frontRealtimeWriterStarted;
+@property (nonatomic, assign) BOOL backRealtimeWriterStarted;
 @property (nonatomic, assign) BOOL realtimeFinishRequested;
 @property (nonatomic, assign) BOOL realtimeFinishWhenFirstFrameWritten;
 @property (nonatomic, assign) BOOL realtimeRecordingStartedEventEmitted;
 @property (nonatomic, assign) NSInteger realtimeDroppedFrameCount;
 @property (nonatomic, assign) NSInteger realtimeWrittenVideoFrameCount;
+@property (nonatomic, assign) NSInteger frontRealtimeWrittenVideoFrameCount;
+@property (nonatomic, assign) NSInteger backRealtimeWrittenVideoFrameCount;
 @property (nonatomic, assign) NSInteger realtimeDroppedAudioSampleCount;
 @property (nonatomic, strong) DualCameraLayoutState *recordingLayoutState;
 @property (nonatomic, assign) CMTime lastRealtimeVideoPTS;
 @property (nonatomic, assign) BOOL hasLastRealtimeVideoPTS;
+@property (nonatomic, assign) BOOL shouldSaveSeparateCameraVideos;
 
 // canvasSizeAtRecording — only declared here (not in .h), used internally
 @property (nonatomic, assign) CGSize canvasSizeAtRecording;
@@ -160,3 +210,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 #import "DualCameraView+Session.h"
 #import "DualCameraView+Recording.h"
 #import "DualCameraView+Capture.h"
+
+@interface DualCameraView (BeautyPreviewInvalidation)
+- (void)invalidateBeautyPreviewForLayoutChange:(NSString *)reason;
+@end

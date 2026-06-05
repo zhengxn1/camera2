@@ -1,6 +1,15 @@
 #import "DualCameraView+Layout.h"
 #import "DualCameraView_Internal.h"
 
+static CGFloat BeautyProbeAspectRatio(CGSize size) {
+  if (size.width <= 1.0 || size.height <= 1.0) return 0.0;
+  return size.width / size.height;
+}
+
+static BOOL BeautyPreviewSizesMatch(CGSize a, CGSize b) {
+  return fabs(a.width - b.width) <= 2.0 && fabs(a.height - b.height) <= 2.0;
+}
+
 @implementation DualCameraView (Layout)
 
 #pragma mark - Canvas
@@ -218,9 +227,52 @@
     self.backPreviewView.frame = canvas;
   }
 
-  if (self.frontPreviewLayer) self.frontPreviewLayer.frame = self.frontPreviewView.bounds;
-  if (self.backPreviewLayer) self.backPreviewLayer.frame = self.backPreviewView.bounds;
-  if (self.singlePreviewLayer) self.singlePreviewLayer.frame = [self targetPreviewViewForPosition:self.singleCameraPosition].bounds;
+	  if (self.frontPreviewLayer) self.frontPreviewLayer.frame = self.frontPreviewView.bounds;
+	  if (self.backPreviewLayer) self.backPreviewLayer.frame = self.backPreviewView.bounds;
+	  if (self.singlePreviewLayer) self.singlePreviewLayer.frame = [self targetPreviewViewForPosition:self.singleCameraPosition].bounds;
+	  CGFloat previewScale = UIScreen.mainScreen.scale ?: 1.0;
+	  @synchronized(self) {
+	    self.beautyPreviewTargetSize = CGSizeMake(MAX(1, self.frontPreviewView.bounds.size.width * previewScale),
+	                                             MAX(1, self.frontPreviewView.bounds.size.height * previewScale));
+	  }
+
+	  CFTimeInterval now = CACurrentMediaTime();
+  BOOL shouldLogLayout = self.frontBeautyEnabled &&
+                         (now - self.lastBeautyLayoutDiagLogTime > 0.5 || self.beautyLayoutChanging);
+	  if (shouldLogLayout) {
+	    self.lastBeautyLayoutDiagLogTime = now;
+    NSLog(@"[BeautyLayoutDiag] layout=%@ ratio=%.3f canvas=%@ frontFrame=%@ frontBounds=%@ frontHidden=%d backFrame=%@ backHidden=%d frontLayerHidden=%d frontLayerFrame=%@ beautyHidden=%d beautyFrame=%@ beautyDrawable=%@ beautySuperview=%@ subviews=%lu changing=%d",
+          self.currentLayout ?: @"nil",
+          self.dualLayoutRatio,
+          NSStringFromCGRect(canvas),
+          NSStringFromCGRect(self.frontPreviewView.frame),
+          NSStringFromCGRect(self.frontPreviewView.bounds),
+          self.frontPreviewView.hidden,
+          NSStringFromCGRect(self.backPreviewView.frame),
+          self.backPreviewView.hidden,
+          self.frontPreviewLayer ? self.frontPreviewLayer.hidden : YES,
+          self.frontPreviewLayer ? NSStringFromCGRect(self.frontPreviewLayer.frame) : @"nil",
+          self.beautyPreviewView ? self.beautyPreviewView.hidden : YES,
+          self.beautyPreviewView ? NSStringFromCGRect(self.beautyPreviewView.frame) : @"nil",
+          self.beautyPreviewView ? NSStringFromCGSize(self.beautyPreviewView.drawableSize) : @"nil",
+          self.beautyPreviewView.superview == self.frontPreviewView ? @"frontPreviewView" : NSStringFromClass(self.beautyPreviewView.superview.class),
+	          (unsigned long)self.frontPreviewView.subviews.count,
+	          self.beautyLayoutChanging);
+	  }
+	  BOOL rawFrontVisible = self.frontPreviewLayer && !self.frontPreviewLayer.hidden && !self.frontPreviewView.hidden;
+	  BOOL beautyVisible = self.beautyPreviewView && !self.beautyPreviewView.hidden;
+	  if (self.frontBeautyEnabled && (self.frontPreviewView.subviews.count > 1 || (rawFrontVisible && beautyVisible))) {
+	    NSLog(@"[BeautyProbe][LayerConflict] layout=%@ rawFrontVisible=%d beautyVisible=%d frontSubviews=%lu frontLayerHidden=%d beautySuperview=%@ beautyFrame=%@ frontBounds=%@",
+	          self.currentLayout ?: @"nil",
+	          rawFrontVisible,
+	          beautyVisible,
+	          (unsigned long)self.frontPreviewView.subviews.count,
+	          self.frontPreviewLayer ? self.frontPreviewLayer.hidden : YES,
+	          self.beautyPreviewView.superview == self.frontPreviewView ? @"frontPreviewView" : NSStringFromClass(self.beautyPreviewView.superview.class),
+	          self.beautyPreviewView ? NSStringFromCGRect(self.beautyPreviewView.frame) : @"nil",
+	          NSStringFromCGRect(self.frontPreviewView.bounds));
+	  }
+	  [self updateBeautyPreviewVisibility];
 }
 
 #pragma mark - Preview view / layer management
@@ -263,6 +315,319 @@
   dispatch_async(dispatch_get_main_queue(), ^{
     [self removePreviewLayers];
   });
+}
+
+- (BOOL)layoutContainsFrontCamera:(NSString *)layout {
+  return [layout isEqualToString:@"front"] || [self isDualLayout:layout ?: @"back"];
+}
+
+- (CGSize)currentBeautyPreviewTargetSize {
+  CGFloat scale = UIScreen.mainScreen.scale ?: 1.0;
+  return CGSizeMake(MAX(1, self.frontPreviewView.bounds.size.width * scale),
+                    MAX(1, self.frontPreviewView.bounds.size.height * scale));
+}
+
+- (BOOL)beautyPreviewMetadataMatchesCurrentTarget:(CGSize)currentTarget dropReason:(NSString **)dropReason {
+  NSString *reason = nil;
+  BOOL matches = NO;
+  @synchronized(self) {
+    BOOL hasFrame = self.latestBeautyPreviewFrame != nil;
+    BOOL generationMatches = self.latestBeautyPreviewGeneration == self.beautyLayoutGeneration;
+    NSString *currentLayout = self.currentLayout ?: @"back";
+    NSString *latestLayout = self.latestBeautyPreviewLayoutMode ?: @"back";
+    BOOL layoutMatches = [latestLayout isEqualToString:currentLayout];
+    BOOL targetMatches = BeautyPreviewSizesMatch(self.latestBeautyPreviewTargetSize, currentTarget);
+    BOOL mirrorMatches = self.latestBeautyPreviewMirrored == self.frontPreviewMirrored;
+    matches = hasFrame && generationMatches && layoutMatches && targetMatches && mirrorMatches;
+    if (!hasFrame) {
+      reason = @"noFrame";
+    } else if (!generationMatches) {
+      reason = @"staleGeneration";
+    } else if (!layoutMatches) {
+      reason = @"layoutMismatch";
+    } else if (!targetMatches) {
+      reason = @"targetMismatch";
+    } else if (!mirrorMatches) {
+      reason = @"mirrorMismatch";
+    } else {
+      reason = @"ok";
+    }
+  }
+  if (dropReason) {
+    *dropReason = reason;
+  }
+  return matches;
+}
+
+- (BOOL)shouldShowBeautyPreview {
+  if (!self.frontBeautyEnabled || !self.metalDevice || !self.metalCommandQueue) return NO;
+  if (!self.usingMultiCam || ![self layoutContainsFrontCamera:self.currentLayout]) return NO;
+  if (self.frontPreviewView.hidden) return NO;
+
+  CFTimeInterval now = CACurrentMediaTime();
+  BOOL layoutStillChanging = self.beautyLayoutChanging && (now - self.lastBeautyLayoutChangeTime < 0.45);
+  if (layoutStillChanging) return NO;
+  if (self.beautyLayoutChanging && !layoutStillChanging) {
+    self.beautyLayoutChanging = NO;
+  }
+
+  NSString *dropReason = nil;
+  return [self beautyPreviewMetadataMatchesCurrentTarget:[self currentBeautyPreviewTargetSize]
+                                              dropReason:&dropReason];
+}
+
+- (void)updateBeautyPreviewVisibility {
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self updateBeautyPreviewVisibility];
+    });
+    return;
+  }
+
+	  CGSize currentTarget = [self currentBeautyPreviewTargetSize];
+	  @synchronized(self) {
+	    self.beautyPreviewTargetSize = currentTarget;
+	  }
+	  NSString *dropReason = nil;
+	  BOOL metadataMatches = [self beautyPreviewMetadataMatchesCurrentTarget:currentTarget dropReason:&dropReason];
+	  BOOL shouldShow = [self shouldShowBeautyPreview];
+	  if (self.frontPreviewLayer) {
+	    self.frontPreviewLayer.hidden = shouldShow || self.frontPreviewView.hidden;
+	  }
+
+	  CFTimeInterval now = CACurrentMediaTime();
+	  BOOL hasMetal = self.metalDevice && self.metalCommandQueue;
+	  BOOL layoutHasFront = [self layoutContainsFrontCamera:self.currentLayout];
+	  if (now - self.lastBeautyPreviewDiagLogTime > 0.5 || self.beautyLayoutChanging) {
+	    self.lastBeautyPreviewDiagLogTime = now;
+	    NSLog(@"[BeautyProbe][PreviewGate] shouldShow=%d enabled=%d hasMetal=%d usingMultiCam=%d layout=%@ layoutHasFront=%d latestFront=%d frontViewHidden=%d frontLayerHidden=%d beautyHidden=%d beautySuperview=%@ frontSubviews=%lu scheduled=%d changing=%d",
+	          shouldShow,
+	          self.frontBeautyEnabled,
+	          hasMetal,
+	          self.usingMultiCam,
+	          self.currentLayout ?: @"nil",
+	          layoutHasFront,
+		          self.latestBeautyPreviewFrame != nil,
+	          self.frontPreviewView.hidden,
+	          self.frontPreviewLayer ? self.frontPreviewLayer.hidden : YES,
+	          self.beautyPreviewView ? self.beautyPreviewView.hidden : YES,
+	          self.beautyPreviewView.superview == self.frontPreviewView ? @"frontPreviewView" : NSStringFromClass(self.beautyPreviewView.superview.class),
+	          (unsigned long)self.frontPreviewView.subviews.count,
+	          self.beautyPreviewFrameScheduled,
+	          self.beautyLayoutChanging);
+		  }
+	  if (now - self.lastBeautyPreviewDiagLogTime > 0.5 || !metadataMatches || self.beautyLayoutChanging) {
+	    NSLog(@"[BeautyProbe][PreviewVersion] show=%d dropReason=%@ currentGen=%ld latestGen=%ld layout=%@ latestLayout=%@ target=%@ latestTarget=%@ mirrored=%d latestMirrored=%d",
+	          shouldShow,
+	          dropReason ?: @"unknown",
+	          (long)self.beautyLayoutGeneration,
+	          (long)self.latestBeautyPreviewGeneration,
+	          self.currentLayout ?: @"nil",
+	          self.latestBeautyPreviewLayoutMode ?: @"nil",
+	          NSStringFromCGSize(currentTarget),
+	          NSStringFromCGSize(self.latestBeautyPreviewTargetSize),
+	          self.frontPreviewMirrored,
+	          self.latestBeautyPreviewMirrored);
+	  }
+
+		  if (!shouldShow) {
+		    if (self.beautyPreviewView) {
+		      self.beautyPreviewView.hidden = YES;
+    }
+    return;
+  }
+
+  if (shouldShow && !self.beautyPreviewView) {
+    MTKView *preview = [[MTKView alloc] initWithFrame:CGRectZero device:self.metalDevice];
+    preview.backgroundColor = UIColor.blackColor;
+    preview.clearColor = MTLClearColorMake(0, 0, 0, 1);
+    preview.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+    preview.framebufferOnly = NO;
+    preview.paused = YES;
+    preview.enableSetNeedsDisplay = NO;
+    preview.userInteractionEnabled = NO;
+    preview.opaque = YES;
+    [self.frontPreviewView addSubview:preview];
+    self.beautyPreviewView = preview;
+  }
+
+  if (!self.beautyPreviewView) return;
+
+  CGFloat scale = UIScreen.mainScreen.scale ?: 1.0;
+  if (self.beautyPreviewView.superview != self.frontPreviewView) {
+    [self.beautyPreviewView removeFromSuperview];
+    [self.frontPreviewView addSubview:self.beautyPreviewView];
+  }
+		  self.beautyPreviewView.frame = self.frontPreviewView.bounds;
+		  self.beautyPreviewView.drawableSize = CGSizeMake(MAX(1, self.frontPreviewView.bounds.size.width * scale),
+		                                                   MAX(1, self.frontPreviewView.bounds.size.height * scale));
+		  @synchronized(self) {
+		    self.beautyPreviewTargetSize = self.beautyPreviewView.drawableSize;
+		  }
+		  self.beautyPreviewView.layer.cornerRadius = self.frontPreviewView.layer.cornerRadius;
+		  self.beautyPreviewView.layer.masksToBounds = YES;
+		  self.beautyPreviewView.hidden = !shouldShow;
+  if (shouldShow) {
+    [self.frontPreviewView bringSubviewToFront:self.beautyPreviewView];
+  }
+
+	  if (now - self.lastBeautyPreviewDiagLogTime > 0.5 || self.beautyLayoutChanging) {
+    self.lastBeautyPreviewDiagLogTime = now;
+    NSLog(@"[BeautyPreviewDiag] shouldShow=%d enabled=%d usingMultiCam=%d layout=%@ latestFront=%d frontViewHidden=%d frontLayerHidden=%d beautyHidden=%d beautyFrame=%@ beautyDrawable=%@ frontSubviews=%lu scheduled=%d changing=%d",
+          shouldShow,
+          self.frontBeautyEnabled,
+          self.usingMultiCam,
+          self.currentLayout ?: @"nil",
+	          self.latestBeautyPreviewFrame != nil,
+          self.frontPreviewView.hidden,
+          self.frontPreviewLayer ? self.frontPreviewLayer.hidden : YES,
+          self.beautyPreviewView ? self.beautyPreviewView.hidden : YES,
+          self.beautyPreviewView ? NSStringFromCGRect(self.beautyPreviewView.frame) : @"nil",
+          self.beautyPreviewView ? NSStringFromCGSize(self.beautyPreviewView.drawableSize) : @"nil",
+          (unsigned long)self.frontPreviewView.subviews.count,
+          self.beautyPreviewFrameScheduled,
+          self.beautyLayoutChanging);
+  }
+}
+
+- (void)renderBeautyPreviewIfNeeded {
+  if (![NSThread isMainThread]) {
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [self renderBeautyPreviewIfNeeded];
+    });
+    return;
+  }
+
+  MTKView *preview = self.beautyPreviewView;
+  if (!preview || preview.hidden) return;
+  CFTimeInterval now = CACurrentMediaTime();
+	  BOOL layoutStillChanging = self.beautyLayoutChanging && (now - self.lastBeautyLayoutChangeTime < 0.80);
+  if (layoutStillChanging) {
+    preview.hidden = YES;
+    if (self.frontPreviewLayer && !self.frontPreviewView.hidden) {
+      self.frontPreviewLayer.hidden = NO;
+    }
+    return;
+  }
+  if (self.beautyLayoutChanging && !layoutStillChanging) self.beautyLayoutChanging = NO;
+  CFTimeInterval minRenderInterval = layoutStillChanging ? (1.0 / 24.0) : (1.0 / 30.0);
+  if (self.lastBeautyPreviewRenderTime > 0 &&
+      now - self.lastBeautyPreviewRenderTime < minRenderInterval) {
+    self.beautyPreviewSkippedRenderCount += 1;
+    return;
+  }
+  self.lastBeautyPreviewRenderTime = now;
+
+	  CIImage *previewFrame = nil;
+	  NSInteger frameGeneration = -1;
+	  NSString *frameLayout = nil;
+	  CGSize frameTarget = CGSizeZero;
+	  BOOL frameMirrored = NO;
+	  @synchronized(self) {
+	    previewFrame = self.latestBeautyPreviewFrame;
+	    frameGeneration = self.latestBeautyPreviewGeneration;
+	    frameLayout = [self.latestBeautyPreviewLayoutMode copy];
+	    frameTarget = self.latestBeautyPreviewTargetSize;
+	    frameMirrored = self.latestBeautyPreviewMirrored;
+	  }
+
+	  NSString *layout = self.currentLayout ?: @"back";
+	  if (![self layoutContainsFrontCamera:layout] || !previewFrame) return;
+
+	  CGSize drawableSize = preview.drawableSize;
+	  if (drawableSize.width <= 1 || drawableSize.height <= 1) return;
+	  NSString *dropReason = nil;
+	  BOOL metadataMatches = [self beautyPreviewMetadataMatchesCurrentTarget:drawableSize dropReason:&dropReason];
+	  if (!metadataMatches) {
+	    preview.hidden = YES;
+	    if (self.frontPreviewLayer && !self.frontPreviewView.hidden) {
+	      self.frontPreviewLayer.hidden = NO;
+	    }
+	    NSLog(@"[BeautyProbe][PreviewVersion] renderDrop=%@ currentGen=%ld frameGen=%ld layout=%@ frameLayout=%@ drawable=%@ frameTarget=%@ mirrored=%d frameMirrored=%d",
+	          dropReason ?: @"unknown",
+	          (long)self.beautyLayoutGeneration,
+	          (long)frameGeneration,
+	          layout,
+	          frameLayout ?: @"nil",
+	          NSStringFromCGSize(drawableSize),
+	          NSStringFromCGSize(frameTarget),
+	          self.frontPreviewMirrored,
+	          frameMirrored);
+	    return;
+	  }
+
+  id<CAMetalDrawable> drawable = preview.currentDrawable;
+  if (!drawable) return;
+
+	  CGFloat viewAspect = BeautyProbeAspectRatio(self.frontPreviewView.bounds.size);
+	  CGFloat beautyFrameAspect = BeautyProbeAspectRatio(preview.frame.size);
+	  CGFloat drawableAspect = BeautyProbeAspectRatio(drawableSize);
+		  CGFloat frontFrameAspect = BeautyProbeAspectRatio(previewFrame.extent.size);
+	  if ((viewAspect > 0.0 && drawableAspect > 0.0 && fabs(viewAspect - drawableAspect) > 0.03) ||
+	      (beautyFrameAspect > 0.0 && drawableAspect > 0.0 && fabs(beautyFrameAspect - drawableAspect) > 0.03)) {
+	    NSLog(@"[BeautyProbe][AspectMismatch] layout=%@ viewAspect=%.4f beautyFrameAspect=%.4f drawableAspect=%.4f frontFrameAspect=%.4f frontBounds=%@ beautyFrame=%@ drawable=%@ frontExtent=%@",
+	          self.currentLayout ?: @"nil",
+	          viewAspect,
+	          beautyFrameAspect,
+	          drawableAspect,
+	          frontFrameAspect,
+	          NSStringFromCGRect(self.frontPreviewView.bounds),
+	          NSStringFromCGRect(preview.frame),
+	          NSStringFromCGSize(drawableSize),
+		          NSStringFromCGRect(previewFrame.extent));
+	  }
+
+	  CGRect targetRect = CGRectMake(0, 0, drawableSize.width, drawableSize.height);
+	  CFTimeInterval renderStart = CACurrentMediaTime();
+	  CIImage *image = previewFrame;
+	  CGSize previewExtentSize = previewFrame.extent.size;
+	  if (previewExtentSize.width > 1 && previewExtentSize.height > 1 &&
+	      (fabs(previewExtentSize.width - drawableSize.width) > 1 ||
+	       fabs(previewExtentSize.height - drawableSize.height) > 1)) {
+	    CGAffineTransform transform = CGAffineTransformMakeTranslation(-previewFrame.extent.origin.x, -previewFrame.extent.origin.y);
+	    transform = CGAffineTransformScale(transform,
+	                                       drawableSize.width / previewExtentSize.width,
+	                                       drawableSize.height / previewExtentSize.height);
+	    image = [previewFrame imageByApplyingTransform:transform];
+	  }
+	  if (!image) return;
+
+  id<MTLCommandBuffer> commandBuffer = [self.metalCommandQueue commandBuffer];
+  if (!drawable || !commandBuffer) return;
+
+  CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+  [self.ciContext render:image
+            toMTLTexture:drawable.texture
+           commandBuffer:commandBuffer
+                  bounds:CGRectMake(0, 0, drawableSize.width, drawableSize.height)
+              colorSpace:srgb];
+  CGColorSpaceRelease(srgb);
+  [commandBuffer presentDrawable:drawable];
+  [commandBuffer commit];
+
+	  CFTimeInterval renderMs = (CACurrentMediaTime() - renderStart) * 1000.0;
+	  if (renderMs > 33.0) {
+	    NSLog(@"[BeautyProbe][SlowRender] renderMs=%.2f layout=%@ drawable=%@ frontExtent=%@ skipped=%ld changing=%d",
+	          renderMs,
+	          self.currentLayout ?: @"nil",
+	          NSStringFromCGSize(drawableSize),
+		          NSStringFromCGRect(previewFrame.extent),
+	          (long)self.beautyPreviewSkippedRenderCount,
+	          layoutStillChanging);
+	  }
+	  if (now - self.lastBeautyRenderDiagLogTime > 0.5 || layoutStillChanging) {
+    self.lastBeautyRenderDiagLogTime = now;
+    NSLog(@"[BeautyRenderDiag] layout=%@ drawable=%@ frontExtent=%@ target=%@ renderMs=%.2f skipped=%ld changing=%d frontViewBounds=%@",
+          self.currentLayout ?: @"nil",
+          NSStringFromCGSize(drawableSize),
+	          NSStringFromCGRect(previewFrame.extent),
+          NSStringFromCGRect(targetRect),
+          renderMs,
+          (long)self.beautyPreviewSkippedRenderCount,
+          layoutStillChanging,
+          NSStringFromCGRect(self.frontPreviewView.bounds));
+    self.beautyPreviewSkippedRenderCount = 0;
+  }
 }
 
 #pragma mark - Convenience helpers
