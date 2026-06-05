@@ -50,10 +50,14 @@
                                       back:(CIImage *)back
                                 highQuality:(BOOL)highQuality;
 
+/// Front-camera beauty pass shared by the custom preview and saved media.
+- (CIImage *)beautifiedFrontImage:(CIImage *)image;
+
 // ---------------------------------------------------------------------------
 // File / size utilities
 // ---------------------------------------------------------------------------
 - (NSString *)saveCIImageAsJPEG:(CIImage *)ciImage;
+- (NSString *)saveCIImageAsJPEG:(CIImage *)ciImage prefix:(NSString *)prefix;
 - (NSString *)tempPathWithPrefix:(NSString *)prefix;
 - (NSString *)documentsPathWithPrefix:(NSString *)prefix;
 

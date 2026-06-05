@@ -23,6 +23,9 @@ export const LAYOUT_MAP: Record<CameraMode, string> = {
 export const ASPECT_RATIOS = ['9:16', '3:4', '1:1'] as const;
 export type AspectRatio = (typeof ASPECT_RATIOS)[number];
 
+export const VIDEO_SAVE_MODES = ['combined', 'all3'] as const;
+export type VideoSaveMode = (typeof VIDEO_SAVE_MODES)[number];
+
 export const BACK_ZOOM_LEVELS = [0.5, 1, 2, 3, 5];
 export const FRONT_ZOOM_LEVELS = [1, 2];
 export const SNAP_POINTS = [0.3, 0.5, 0.7];

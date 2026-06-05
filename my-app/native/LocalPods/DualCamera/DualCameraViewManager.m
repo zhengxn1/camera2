@@ -17,6 +17,30 @@ RCT_CUSTOM_VIEW_PROPERTY(saveAspectRatio, NSString, DualCameraView) {
   view.saveAspectRatio = json ? [RCTConvert NSString:json] : @"9:16";
 }
 
+RCT_CUSTOM_VIEW_PROPERTY(videoSaveMode, NSString, DualCameraView) {
+  view.videoSaveMode = json ? [RCTConvert NSString:json] : @"combined";
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyEnabled, BOOL, DualCameraView) {
+  view.frontBeautyEnabled = json ? [RCTConvert BOOL:json] : YES;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautySmooth, CGFloat, DualCameraView) {
+  view.frontBeautySmooth = json ? [RCTConvert CGFloat:json] : 60.0;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyWhiten, CGFloat, DualCameraView) {
+  view.frontBeautyWhiten = json ? [RCTConvert CGFloat:json] : 45.0;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyEven, CGFloat, DualCameraView) {
+  view.frontBeautyEven = json ? [RCTConvert CGFloat:json] : 50.0;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyPlump, CGFloat, DualCameraView) {
+  view.frontBeautyPlump = json ? [RCTConvert CGFloat:json] : 55.0;
+}
+
 RCT_CUSTOM_VIEW_PROPERTY(dualLayoutRatio, CGFloat, DualCameraView) {
   view.dualLayoutRatio = json ? [RCTConvert CGFloat:json] : 0.5;
 }
@@ -39,26 +63,6 @@ RCT_CUSTOM_VIEW_PROPERTY(sxBackOnTop, BOOL, DualCameraView) {
 
 RCT_CUSTOM_VIEW_PROPERTY(pipMainIsBack, BOOL, DualCameraView) {
   view.pipMainIsBack = json ? [RCTConvert BOOL:json] : YES;
-}
-
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautyEnabled, BOOL, DualCameraView) {
-  view.frontBeautyEnabled = json ? [RCTConvert BOOL:json] : NO;
-}
-
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautySmooth, CGFloat, DualCameraView) {
-  view.frontBeautySmooth = json ? [RCTConvert CGFloat:json] : 0;
-}
-
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautyBrighten, CGFloat, DualCameraView) {
-  view.frontBeautyBrighten = json ? [RCTConvert CGFloat:json] : 0;
-}
-
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautyTone, CGFloat, DualCameraView) {
-  view.frontBeautyTone = json ? [RCTConvert CGFloat:json] : 0;
-}
-
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautySharpness, CGFloat, DualCameraView) {
-  view.frontBeautySharpness = json ? [RCTConvert CGFloat:json] : 0;
 }
 
 @end

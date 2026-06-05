@@ -38,15 +38,31 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
 }
 
 - (void)startOnSessionQueue {
-  dispatch_async(self.sessionQueue, ^{
-    if (self.isConfigured) {
-      [self resumeIfNeeded];
-      return;
-    }
+	  dispatch_async(self.sessionQueue, ^{
+	    if (self.isConfigured) {
+	      NSLog(@"[BeautyProbe][Session] resume configured=1 usingMultiCam=%d running=%d layout=%@ enabled=%d metal=%d commandQueue=%d",
+	            self.usingMultiCam,
+	            self.isRunning,
+	            self.currentLayout ?: @"nil",
+	            self.frontBeautyEnabled,
+	            self.metalDevice != nil,
+	            self.metalCommandQueue != nil);
+	      [self resumeIfNeeded];
+	      return;
+	    }
 
-    if ([AVCaptureMultiCamSession isMultiCamSupported]) {
-      [self configureAndStartMultiCamSession];
-    } else {
+	    BOOL multiCamSupported = [AVCaptureMultiCamSession isMultiCamSupported];
+	    NSLog(@"[BeautyProbe][Session] start supported=%d layout=%@ enabled=%d metal=%d commandQueue=%d configured=%d running=%d",
+	          multiCamSupported,
+	          self.currentLayout ?: @"nil",
+	          self.frontBeautyEnabled,
+	          self.metalDevice != nil,
+	          self.metalCommandQueue != nil,
+	          self.isConfigured,
+	          self.isRunning);
+	    if (multiCamSupported) {
+	      [self configureAndStartMultiCamSession];
+	    } else {
       [self configureAndStartSingleCameraFallback];
     }
   });
@@ -336,20 +352,34 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
   self.backDeviceInput = backInput;
   self.frontPhotoOutput = frontPhotoOutput;
   self.backPhotoOutput = backPhotoOutput;
-  NSLog(@"[DualCamera] Session config complete — realtime front=%@ back=%@ audio=%@ hardwareCost=%.3f systemPressureCost=%.3f",
-        self.frontVideoDataOutput ? @"OK" : @"NIL",
+	  NSLog(@"[DualCamera] Session config complete — realtime front=%@ back=%@ audio=%@ hardwareCost=%.3f systemPressureCost=%.3f",
+	        self.frontVideoDataOutput ? @"OK" : @"NIL",
         self.backVideoDataOutput ? @"OK" : @"NIL",
         self.audioDataOutput ? @"OK" : @"NIL",
-        self.multiCamSession.hardwareCost,
-        self.multiCamSession.systemPressureCost);
-  self.usingMultiCam = YES;
+	        self.multiCamSession.hardwareCost,
+	        self.multiCamSession.systemPressureCost);
+	  NSLog(@"[BeautyProbe][Session] multicamConfigured frontOutput=%d backOutput=%d audioOutput=%d layout=%@ enabled=%d hardwareCost=%.3f systemPressureCost=%.3f",
+	        self.frontVideoDataOutput != nil,
+	        self.backVideoDataOutput != nil,
+	        self.audioDataOutput != nil,
+	        self.currentLayout ?: @"nil",
+	        self.frontBeautyEnabled,
+	        self.multiCamSession.hardwareCost,
+	        self.multiCamSession.systemPressureCost);
+	  self.usingMultiCam = YES;
   self.isConfigured = YES;
   [self registerSessionNotifications:self.multiCamSession];
   [self applyCurrentVideoOrientationAndMirroring];
 
   [self.multiCamSession startRunning];
-  self.isRunning = self.multiCamSession.isRunning;
-  if (!self.isRunning) {
+	  self.isRunning = self.multiCamSession.isRunning;
+	  NSLog(@"[BeautyProbe][Session] multicamStarted running=%d configured=%d usingMultiCam=%d layout=%@ enabled=%d",
+	        self.isRunning,
+	        self.isConfigured,
+	        self.usingMultiCam,
+	        self.currentLayout ?: @"nil",
+	        self.frontBeautyEnabled);
+	  if (!self.isRunning) {
     [self emitSessionError:@"Multi-cam session did not start running." code:@"multicam_start_failed"];
   }
 }
@@ -357,7 +387,11 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
 #pragma mark - Single-cam configuration
 
 - (void)configureAndStartSingleCameraFallback {
-  if ([self isDualLayout:self.currentLayout]) {
+	  NSLog(@"[BeautyProbe][Session] fallback layout=%@ enabled=%d currentLayoutDual=%d",
+	        self.currentLayout ?: @"nil",
+	        self.frontBeautyEnabled,
+	        [self isDualLayout:self.currentLayout ?: @"back"]);
+	  if ([self isDualLayout:self.currentLayout]) {
     [self emitSessionError:@"This device does not support simultaneous front and back camera preview." code:@"multicam_unsupported"];
   }
   [self configureSingleSessionForPosition:[self primaryCameraPosition] startRunning:YES];
@@ -462,10 +496,15 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
   [self registerSessionNotifications:session];
   [self applyCurrentVideoOrientationAndMirroring];
 
-  if (startRunning) {
-    [session startRunning];
-    self.isRunning = session.isRunning;
-    if (!self.isRunning) {
+	  if (startRunning) {
+	    [session startRunning];
+	    self.isRunning = session.isRunning;
+	    NSLog(@"[BeautyProbe][Session] singleStarted running=%d position=%ld layout=%@ enabled=%d",
+	          self.isRunning,
+	          (long)position,
+	          self.currentLayout ?: @"nil",
+	          self.frontBeautyEnabled);
+	    if (!self.isRunning) {
       [self emitSessionError:@"Single camera fallback session did not start running." code:@"single_start_failed"];
     }
   }

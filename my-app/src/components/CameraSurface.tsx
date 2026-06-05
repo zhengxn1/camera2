@@ -1,14 +1,18 @@
-import { memo } from 'react';
+import { memo, useEffect } from 'react';
 import { Text, View } from 'react-native';
 import {
   type AspectRatio,
   CAMERA_MODE,
   type CameraMode,
   LAYOUT_MAP,
+  type VideoSaveMode,
 } from '../constants';
 import { NativeDualCameraView } from '../native';
 import { styles } from '../styles';
+import type { FrontBeautySettings } from '../hooks/useFrontBeautyEnabled';
 import type { PipPosition } from './CameraControlsOverlay';
+
+let lastBeautyProbeLogAt = 0;
 
 interface CameraSurfaceProps {
   cameraMode: CameraMode;
@@ -17,11 +21,9 @@ interface CameraSurfaceProps {
   pipSize: number;
   pipPosition: PipPosition;
   isFlipped: boolean;
+  videoSaveMode: VideoSaveMode;
   frontBeautyEnabled: boolean;
-  frontBeautySmooth: number;
-  frontBeautyBrighten: number;
-  frontBeautyTone: number;
-  frontBeautySharpness: number;
+  frontBeautySettings: FrontBeautySettings;
 }
 
 function CameraSurfaceImpl({
@@ -31,12 +33,25 @@ function CameraSurfaceImpl({
   pipSize,
   pipPosition,
   isFlipped,
+  videoSaveMode,
   frontBeautyEnabled,
-  frontBeautySmooth,
-  frontBeautyBrighten,
-  frontBeautyTone,
-  frontBeautySharpness,
+  frontBeautySettings,
 }: CameraSurfaceProps) {
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastBeautyProbeLogAt < 500) return;
+    lastBeautyProbeLogAt = now;
+    console.log('[BeautyProbe][JS] props', {
+      enabled: frontBeautyEnabled,
+      smooth: frontBeautySettings.smooth,
+      whiten: frontBeautySettings.whiten,
+      even: frontBeautySettings.even,
+      plump: frontBeautySettings.plump,
+      layoutMode: LAYOUT_MAP[cameraMode],
+      videoSaveMode,
+    });
+  }, [cameraMode, frontBeautyEnabled, frontBeautySettings, videoSaveMode]);
+
   if (!NativeDualCameraView) {
     return (
       <View style={styles.fallbackContainer}>
@@ -60,11 +75,12 @@ function CameraSurfaceImpl({
       pipPositionY={pipPosition.y}
       sxBackOnTop={isSplit ? !isFlipped : true}
       pipMainIsBack={isPip ? !isFlipped : true}
+      videoSaveMode={videoSaveMode}
       frontBeautyEnabled={frontBeautyEnabled}
-      frontBeautySmooth={frontBeautySmooth}
-      frontBeautyBrighten={frontBeautyBrighten}
-      frontBeautyTone={frontBeautyTone}
-      frontBeautySharpness={frontBeautySharpness}
+      frontBeautySmooth={frontBeautySettings.smooth}
+      frontBeautyWhiten={frontBeautySettings.whiten}
+      frontBeautyEven={frontBeautySettings.even}
+      frontBeautyPlump={frontBeautySettings.plump}
     />
   );
 }

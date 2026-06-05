@@ -50,6 +50,8 @@
 - (void)createPlaceholderViews;
 - (void)removePreviewLayers;
 - (void)clearPreviewLayersOnMainQueue;
+- (void)updateBeautyPreviewVisibility;
+- (void)renderBeautyPreviewIfNeeded;
 
 // ---------------------------------------------------------------------------
 // Convenience helpers

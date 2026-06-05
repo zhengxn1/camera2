@@ -34,6 +34,14 @@ RCT_EXPORT_MODULE()
   [self sendEventIfNeeded:@"onPhotoSaved" body:@{@"uri": uri ?: @""}];
 }
 
+- (void)sendPhotoSaved:(NSString *)uri uris:(NSDictionary *)uris {
+  NSMutableDictionary *body = [@{@"uri": uri ?: @""} mutableCopy];
+  if (uris) {
+    body[@"uris"] = uris;
+  }
+  [self sendEventIfNeeded:@"onPhotoSaved" body:body];
+}
+
 - (void)sendPhotoError:(NSString *)error {
   [self sendEventIfNeeded:@"onPhotoError" body:@{@"error": error ?: @"Photo error"}];
 }
@@ -44,6 +52,14 @@ RCT_EXPORT_MODULE()
 
 - (void)sendRecordingFinished:(NSString *)uri {
   [self sendEventIfNeeded:@"onRecordingFinished" body:@{@"uri": uri ?: @""}];
+}
+
+- (void)sendRecordingFinished:(NSString *)uri uris:(NSDictionary *)uris {
+  NSMutableDictionary *body = [@{@"uri": uri ?: @""} mutableCopy];
+  if (uris) {
+    body[@"uris"] = uris;
+  }
+  [self sendEventIfNeeded:@"onRecordingFinished" body:body];
 }
 
 - (void)sendRecordingError:(NSString *)error {

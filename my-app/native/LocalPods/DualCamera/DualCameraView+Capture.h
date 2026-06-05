@@ -28,6 +28,7 @@
 // Event emission
 // ---------------------------------------------------------------------------
 - (void)emitPhotoSaved:(NSString *)uri;
+- (void)emitPhotoSaved:(NSString *)uri uris:(NSDictionary *)uris;
 - (void)emitError:(NSString *)error;
 
 @end

@@ -5,7 +5,7 @@ import {
   type HostComponent,
   type ViewProps,
 } from 'react-native';
-import type { CameraSide } from './constants';
+import type { CameraSide, VideoSaveMode } from './constants';
 
 export interface NativeDualCameraViewProps extends ViewProps {
   layoutMode: string;
@@ -16,11 +16,12 @@ export interface NativeDualCameraViewProps extends ViewProps {
   pipPositionY: number;
   sxBackOnTop: boolean;
   pipMainIsBack: boolean;
+  videoSaveMode: VideoSaveMode;
   frontBeautyEnabled: boolean;
   frontBeautySmooth: number;
-  frontBeautyBrighten: number;
-  frontBeautyTone: number;
-  frontBeautySharpness: number;
+  frontBeautyWhiten: number;
+  frontBeautyEven: number;
+  frontBeautyPlump: number;
 }
 
 export interface DualCameraModuleSpec {

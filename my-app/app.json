@@ -20,7 +20,12 @@
         "CFBundleDisplayName": "KIRO分屏相机",
         "ITSAppUsesNonExemptEncryption": false,
         "NSCameraUsageDescription": "需要访问相机以进行全屏预览与拍照。",
-        "NSMicrophoneUsageDescription": "需要访问麦克风以录制视频声音。"
+        "NSMicrophoneUsageDescription": "需要访问麦克风以录制视频声音。",
+        "NSLocalNetworkUsageDescription": "开发调试时需要访问本地网络以连接 Metro 调试服务。",
+        "NSBonjourServices": [
+          "_expo._tcp",
+          "_react-native-metro._tcp"
+        ]
       },
       "buildNumber": "21"
     },

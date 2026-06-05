@@ -25,18 +25,21 @@ NS_ASSUME_NONNULL_BEGIN
 // Save aspect ratio for dual-cam photo output: @"9:16" | @"3:4" | @"1:1"
 @property (nonatomic, copy) NSString *saveAspectRatio;
 
+// Video save mode: @"combined" | @"all3"
+@property (nonatomic, copy) NSString *videoSaveMode;
+
+// Applies mild Core Image beauty processing to saved front-camera media.
+@property (nonatomic, assign) BOOL frontBeautyEnabled;
+@property (nonatomic, assign) CGFloat frontBeautySmooth;
+@property (nonatomic, assign) CGFloat frontBeautyWhiten;
+@property (nonatomic, assign) CGFloat frontBeautyEven;
+@property (nonatomic, assign) CGFloat frontBeautyPlump;
+
 // Flip state: controls camera allocation in preview and save
 // SX: YES=back on top, NO=front on top
 @property (nonatomic, assign) BOOL sxBackOnTop;
 // PiP: YES=back is main (full-screen), NO=front is main
 @property (nonatomic, assign) BOOL pipMainIsBack;
-
-// Front camera beauty controls, normalized from 0 to 100.
-@property (nonatomic, assign) BOOL frontBeautyEnabled;
-@property (nonatomic, assign) CGFloat frontBeautySmooth;
-@property (nonatomic, assign) CGFloat frontBeautyBrighten;
-@property (nonatomic, assign) CGFloat frontBeautyTone;
-@property (nonatomic, assign) CGFloat frontBeautySharpness;
 
 - (void)dc_startSession;
 - (void)dc_stopSession;

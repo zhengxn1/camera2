@@ -1,0 +1,318 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: #101416;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        color: #f2f5ef;
+        font-family: "PingFang SC", "STHeiti", system-ui, sans-serif;
+      }
+
+      .stage {
+        width: 1920px;
+        height: 1080px;
+        position: relative;
+        overflow: hidden;
+        background:
+          linear-gradient(90deg, rgba(242, 245, 239, 0.035) 1px, transparent 1px),
+          linear-gradient(0deg, rgba(242, 245, 239, 0.03) 1px, transparent 1px),
+          radial-gradient(circle at 22% 18%, rgba(120, 208, 139, 0.16), transparent 34%),
+          radial-gradient(circle at 76% 76%, rgba(237, 120, 106, 0.12), transparent 38%),
+          #101416;
+        background-size: 80px 80px, 80px 80px, auto, auto, auto;
+      }
+
+      .scene-content {
+        width: 100%;
+        height: 100%;
+        padding: 84px 96px 80px;
+        display: flex;
+        flex-direction: column;
+        gap: 56px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        opacity: var(--top, 1);
+        transform: translateY(calc((1 - var(--top, 1)) * 24px));
+      }
+
+      .kicker {
+        color: #aeb8b4;
+        font-size: 28px;
+        font-weight: 500;
+      }
+
+      .title {
+        margin: 12px 0 0;
+        font-size: 64px;
+        line-height: 1.05;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .status {
+        padding: 14px 22px;
+        border: 1px solid rgba(242, 245, 239, 0.14);
+        border-radius: 999px;
+        color: #aeb8b4;
+        font-size: 24px;
+      }
+
+      .modules {
+        flex: 1;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 28px;
+        align-items: stretch;
+      }
+
+      .module {
+        min-width: 0;
+        border: 1px solid rgba(242, 245, 239, 0.12);
+        border-radius: 8px;
+        background: linear-gradient(180deg, rgba(32, 43, 49, 0.96), rgba(23, 32, 37, 0.96));
+        padding: 38px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
+        opacity: var(--show, 1);
+        transform: translateY(calc((1 - var(--show, 1)) * 80px)) scale(calc(0.96 + var(--show, 1) * 0.04));
+      }
+
+      .module.active.safe {
+        border-color: rgba(120, 208, 139, 0.75);
+      }
+
+      .module.active.review {
+        border-color: rgba(227, 182, 95, 0.78);
+      }
+
+      .module.active.risk {
+        border-color: rgba(237, 120, 106, 0.8);
+      }
+
+      .module-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      h2 {
+        margin: 0;
+        font-size: 48px;
+        line-height: 1.1;
+        letter-spacing: 0;
+      }
+
+      .badge {
+        width: 76px;
+        height: 76px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+        font-weight: 900;
+      }
+
+      .safe .badge {
+        color: #78d08b;
+        background: rgba(120, 208, 139, 0.11);
+      }
+
+      .review .badge {
+        color: #e3b65f;
+        background: rgba(227, 182, 95, 0.12);
+      }
+
+      .risk .badge {
+        color: #ed786a;
+        background: rgba(237, 120, 106, 0.12);
+      }
+
+      .points {
+        display: grid;
+        gap: 18px;
+        margin: 42px 0;
+      }
+
+      .point {
+        min-height: 66px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        color: #f2f5ef;
+        font-size: 30px;
+        line-height: 1.2;
+        opacity: var(--point, 1);
+        transform: translateX(calc((1 - var(--point, 1)) * -18px));
+      }
+
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        flex: 0 0 auto;
+      }
+
+      .safe .dot {
+        background: #78d08b;
+      }
+
+      .review .dot {
+        background: #e3b65f;
+      }
+
+      .risk .dot {
+        background: #ed786a;
+      }
+
+      .recommend {
+        min-height: 76px;
+        border-top: 1px solid rgba(242, 245, 239, 0.1);
+        padding-top: 24px;
+        color: #aeb8b4;
+        font-size: 26px;
+      }
+
+      .safe .recommend strong {
+        color: #78d08b;
+      }
+
+      .review .recommend strong {
+        color: #e3b65f;
+      }
+
+      .risk .recommend strong {
+        color: #ed786a;
+      }
+
+      .cursor {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 54px;
+        height: 54px;
+        color: #f2f5ef;
+        font-size: 54px;
+        line-height: 54px;
+        opacity: var(--cursor, 0);
+        transform: translate(var(--cursor-x, 330px), 824px);
+        filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.45));
+      }
+
+      .warn-ring {
+        position: absolute;
+        width: 176px;
+        height: 176px;
+        border-radius: 50%;
+        border: 2px solid rgba(237, 120, 106, 0.42);
+        right: 288px;
+        bottom: 106px;
+        opacity: var(--ring, 0);
+        transform: scale(calc(0.75 + var(--ring, 0) * 0.25));
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage">
+      <div class="scene-content">
+        <div class="topbar">
+          <div>
+            <div class="kicker">权限模式</div>
+            <h1 class="title">从保守到放开，三种选择</h1>
+          </div>
+          <div class="status">项目访问设置</div>
+        </div>
+
+        <div class="modules">
+          <section class="module safe">
+            <div>
+              <div class="module-head"><h2>默认权限</h2><div class="badge">1</div></div>
+              <div class="points">
+                <div class="point"><span class="dot"></span><span>读取项目文件</span></div>
+                <div class="point"><span class="dot"></span><span>修改前确认</span></div>
+                <div class="point"><span class="dot"></span><span>不能联网</span></div>
+              </div>
+            </div>
+            <div class="recommend"><strong>最安全</strong>，也最保守</div>
+          </section>
+
+          <section class="module review">
+            <div>
+              <div class="module-head"><h2>自动审查</h2><div class="badge">2</div></div>
+              <div class="points">
+                <div class="point"><span class="dot"></span><span>项目内读写</span></div>
+                <div class="point"><span class="dot"></span><span>高风险弹窗</span></div>
+                <div class="point"><span class="dot"></span><span>删除需确认</span></div>
+              </div>
+            </div>
+            <div class="recommend"><strong>推荐</strong>日常使用</div>
+          </section>
+
+          <section class="module risk">
+            <div>
+              <div class="module-head"><h2>完全访问</h2><div class="badge">3</div></div>
+              <div class="points">
+                <div class="point"><span class="dot"></span><span>代表你操作</span></div>
+                <div class="point"><span class="dot"></span><span>边界最少</span></div>
+                <div class="point"><span class="dot"></span><span>设置会提醒</span></div>
+              </div>
+            </div>
+            <div class="recommend"><strong>不太建议</strong>开启会有提示</div>
+          </section>
+        </div>
+      </div>
+      <div class="cursor">➤</div>
+      <div class="warn-ring"></div>
+    </main>
+
+    <script>
+      const t = Number(new URLSearchParams(location.search).get("t") || "0");
+      const root = document.documentElement;
+      const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
+      const smooth = (a, b, x) => {
+        const p = clamp((x - a) / (b - a));
+        return p * p * (3 - 2 * p);
+      };
+      const lerp = (a, b, p) => a + (b - a) * p;
+
+      root.style.setProperty("--top", smooth(0.05, 0.55, t).toFixed(3));
+      document.querySelectorAll(".module").forEach((module, index) => {
+        const start = 0.45 + index * 0.22;
+        module.style.setProperty("--show", smooth(start, start + 0.45, t).toFixed(3));
+        module.style.setProperty("--point", smooth(start + 0.7, start + 1.2, t).toFixed(3));
+      });
+
+      const ranges = [
+        [".safe", 0.8, 5.5],
+        [".review", 5.8, 10.4],
+        [".risk", 10.6, 14.9],
+      ];
+      ranges.forEach(([selector, a, b]) => {
+        document.querySelector(selector).classList.toggle("active", t >= a && t <= b);
+      });
+
+      let cursorX = 330;
+      if (t >= 5.9) cursorX = lerp(330, 912, smooth(5.9, 7.3, t));
+      if (t >= 10.7) cursorX = lerp(912, 1464, smooth(10.7, 12.05, t));
+      root.style.setProperty("--cursor", smooth(3.8, 4.05, t).toFixed(3));
+      root.style.setProperty("--cursor-x", `${cursorX}px`);
+      root.style.setProperty("--ring", String(smooth(12.1, 12.45, t) - smooth(14.4, 14.8, t)));
+    </script>
+  </body>
+</html>

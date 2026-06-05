@@ -20,6 +20,25 @@ export interface DualCameraSessionApi {
   handleShutterPress: (captureMode: CaptureMode) => void;
 }
 
+interface RecordingFinishedEvent {
+  uri?: string;
+  uris?: {
+    combined?: string;
+    front?: string;
+    back?: string;
+  };
+}
+
+type SavedMediaEvent = RecordingFinishedEvent;
+
+function savedEventUris(event: SavedMediaEvent): string[] {
+  return [
+    event.uris?.combined ?? event.uri,
+    event.uris?.front,
+    event.uris?.back,
+  ].filter((uri): uri is string => !!uri);
+}
+
 /**
  * Owns the photo / recording lifecycle: capture commands, native event
  * subscriptions, and the resulting status flags. Uses a latest-ref for the
@@ -38,12 +57,14 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
   useEffect(() => {
     if (!eventEmitter) return undefined;
 
-    const subPhotoSaved = eventEmitter.addListener('onPhotoSaved', async (event: { uri: string }) => {
+    const subPhotoSaved = eventEmitter.addListener('onPhotoSaved', async (event: SavedMediaEvent) => {
       setSaving(false);
       try {
         const ok = await ensureMediaRef.current();
         if (ok) {
-          await MediaLibrary.saveToLibraryAsync(event.uri);
+          for (const uri of savedEventUris(event)) {
+            await MediaLibrary.saveToLibraryAsync(uri);
+          }
         }
       } catch (e: any) {
         Alert.alert('保存失败', e?.message ?? String(e));
@@ -61,7 +82,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       if (!stopRequestedRef.current) setRecordingStopping(false);
     });
 
-    const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event: { uri: string }) => {
+    const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event: RecordingFinishedEvent) => {
       stopRequestedRef.current = false;
       setRecordingStarting(false);
       setRecording(false);
@@ -69,7 +90,9 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       try {
         const ok = await ensureMediaRef.current();
         if (ok) {
-          await MediaLibrary.saveToLibraryAsync(event.uri);
+          for (const uri of savedEventUris(event)) {
+            await MediaLibrary.saveToLibraryAsync(uri);
+          }
         }
       } catch (e: any) {
         Alert.alert('保存失败', e?.message ?? String(e));
