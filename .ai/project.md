@@ -12,7 +12,7 @@ last-verified: 2026-05-22
 
 ## Key Modules
 
-- `my-app/App.js`: React Native UI and runtime checks for `NativeModules.CameraPermissionModule`, `NativeModules.DualCameraModule`, `NativeModules.DualCameraEventEmitter`, and `requireNativeComponent('DualCameraView')`.
+- `my-app/App.tsx`: React Native UI and runtime checks for `NativeModules.CameraPermissionModule`, `NativeModules.DualCameraModule`, `DualCameraEventEmitter`, `VideoUnlockModule`, and `requireNativeComponent('DualCameraView')`.
 - `my-app/plugin/withDualCamera.js`: Expo config plugin that copies `native/LocalPods/DualCamera` into `ios/LocalPods/DualCamera` during iOS prebuild and patches the generated Podfile with a local `DualCamera` pod.
 - `my-app/native/LocalPods/DualCamera/`: Objective-C native iOS camera module, view manager, event emitter, permission module, and podspec.
 - `my-app/eas.json`: EAS build profiles for development, preview, and production.
@@ -54,3 +54,4 @@ last-verified: 2026-05-22
 - 2026-05-22: Added `.ai/specs/video-unlock-purchase-flow-fix-20260522.md` and fixed the video unlock purchase flow so opening the paywall clears stale product prices, ignores stale StoreKit product responses, blocks duplicate purchase/restore calls, passes the selected product ID into native purchase, and checks existing entitlements before showing another StoreKit purchase sheet. Verified with `npx tsc --noEmit` in `my-app/`.
 - 2026-05-22: Added `.ai/specs/flip-camera-ios-icon-20260522.md` and replaced the bottom flip button's large ring glyph with a compact iOS-style camera outline plus short flip arrows. Verified with `npx tsc --noEmit` in `my-app/`.
 - 2026-05-22: Added `.ai/specs/storekit-viewbridge-crash-investigation-20260522.md` and reduced StoreKit purchase crash risk by restoring the video unlock native purchase bridge to a no-argument method and starting `Product.purchase()` from the main actor. Verified with `npx tsc --noEmit` in `my-app/`; iOS StoreKit sheet still requires device/TestFlight validation.
+- 2026-06-09: Added front-camera beauty controls with an iOS-style bottom beauty panel in `my-app/App.tsx`, `my-app/src/components/BeautyPanel.tsx`, `my-app/src/components/BottomBar.tsx`, and `my-app/src/styles.ts`; exposed front beauty props through `DualCameraView`; applied lightweight Core Image smoothing/brightening/tone/sharpness to front frames before native composition so dual/PIP/front WYSIWYG photo and realtime video outputs use the front beauty settings while preserving single-front non-mirrored export semantics. Verified with `npx tsc --noEmit` in `my-app/`; native iOS compilation still requires macOS/EAS validation.

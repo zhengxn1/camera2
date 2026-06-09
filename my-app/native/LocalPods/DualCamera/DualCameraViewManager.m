@@ -41,4 +41,24 @@ RCT_CUSTOM_VIEW_PROPERTY(pipMainIsBack, BOOL, DualCameraView) {
   view.pipMainIsBack = json ? [RCTConvert BOOL:json] : YES;
 }
 
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyEnabled, BOOL, DualCameraView) {
+  view.frontBeautyEnabled = json ? [RCTConvert BOOL:json] : NO;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautySmooth, CGFloat, DualCameraView) {
+  view.frontBeautySmooth = json ? [RCTConvert CGFloat:json] : 0;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyBrighten, CGFloat, DualCameraView) {
+  view.frontBeautyBrighten = json ? [RCTConvert CGFloat:json] : 0;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyTone, CGFloat, DualCameraView) {
+  view.frontBeautyTone = json ? [RCTConvert CGFloat:json] : 0;
+}
+
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautySharpness, CGFloat, DualCameraView) {
+  view.frontBeautySharpness = json ? [RCTConvert CGFloat:json] : 0;
+}
+
 @end

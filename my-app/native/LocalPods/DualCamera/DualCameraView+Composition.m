@@ -69,6 +69,43 @@
   return [radialGradient.outputImage imageByCroppingToRect:CGRectMake(0, 0, canvasSize.width, canvasSize.height)];
 }
 
+- (CIImage *)beautifiedFrontImage:(CIImage *)image {
+  if (!image || !self.frontBeautyEnabled) return image;
+
+  CGFloat smooth = MAX(0, MIN(100, self.frontBeautySmooth)) / 100.0;
+  CGFloat brighten = MAX(0, MIN(100, self.frontBeautyBrighten)) / 100.0;
+  CGFloat tone = MAX(0, MIN(100, self.frontBeautyTone)) / 100.0;
+  CGFloat sharpness = MAX(0, MIN(100, self.frontBeautySharpness)) / 100.0;
+  if (smooth <= 0 && brighten <= 0 && tone <= 0 && sharpness <= 0) return image;
+
+  CIImage *result = image;
+  if (smooth > 0) {
+    CIFilter *noise = [CIFilter filterWithName:@"CINoiseReduction"];
+    [noise setValue:result forKey:kCIInputImageKey];
+    [noise setValue:@(0.015 + smooth * 0.075) forKey:@"inputNoiseLevel"];
+    [noise setValue:@(0.18 + (1.0 - smooth) * 0.28) forKey:@"inputSharpness"];
+    result = noise.outputImage ?: result;
+  }
+
+  if (brighten > 0 || tone > 0) {
+    CIFilter *color = [CIFilter filterWithName:@"CIColorControls"];
+    [color setValue:result forKey:kCIInputImageKey];
+    [color setValue:@(brighten * 0.08) forKey:kCIInputBrightnessKey];
+    [color setValue:@(1.0 + tone * 0.08) forKey:kCIInputSaturationKey];
+    [color setValue:@(1.0 + brighten * 0.025) forKey:kCIInputContrastKey];
+    result = color.outputImage ?: result;
+  }
+
+  if (sharpness > 0) {
+    CIFilter *sharpen = [CIFilter filterWithName:@"CISharpenLuminance"];
+    [sharpen setValue:result forKey:kCIInputImageKey];
+    [sharpen setValue:@(sharpness * 0.35) forKey:kCIInputSharpnessKey];
+    result = sharpen.outputImage ?: result;
+  }
+
+  return result;
+}
+
 - (CIImage *)preparedCameraImage:(CIImage *)image
                       targetRect:(CGRect)targetRect
                       canvasSize:(CGSize)canvasSize
@@ -140,6 +177,7 @@
   CGRect backRect  = [self ciRectFromUIKitRect:[rects[@"back"]  CGRectValue] canvasHeight:H];
   CGRect frontRect = [self ciRectFromUIKitRect:[rects[@"front"] CGRectValue] canvasHeight:H];
   NSString *layout = state.layoutMode ?: @"back";
+  BOOL hasFrontFrame = front != nil;
 
   if ([layout isEqualToString:@"back"] && !back) {
     back = front;
@@ -148,6 +186,9 @@
     front = back;
   }
   if ([self isDualLayout:layout] && !front && !back) return nil;
+  if (hasFrontFrame) {
+    front = [self beautifiedFrontImage:front];
+  }
 
   CIImage *result = [self blackCanvasSize:canvasSize];
   CIImage *backImage = [self preparedCameraImage:back targetRect:backRect canvasSize:canvasSize mirrored:state.backMirrored highQuality:highQuality];

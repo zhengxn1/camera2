@@ -31,7 +31,10 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
     @autoreleasepool {
       if (!self.isConfigured) return;
 
-      if (self.usingMultiCam && [self isDualLayout:self.currentLayout]) {
+      BOOL useWysiwygFrames = self.usingMultiCam &&
+        ([self isDualLayout:self.currentLayout] ||
+         ([self.currentLayout isEqualToString:@"front"] && self.frontBeautyEnabled));
+      if (useWysiwygFrames) {
         [self captureWysiwygDualPhotoWithCanvasSize:canvasSizeForPhoto];
       } else {
         AVCapturePhotoOutput *output = [self photoOutputForCurrentLayout];
@@ -69,7 +72,11 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
     backFrame = self.latestBackFrame;
   }
 
-  if (!frontFrame || !backFrame) {
+  BOOL isDual = [self isDualLayout:self.currentLayout];
+  BOOL needsFront = isDual || [self.currentLayout isEqualToString:@"front"];
+  BOOL needsBack = isDual || [self.currentLayout isEqualToString:@"back"];
+
+  if ((needsFront && !frontFrame) || (needsBack && !backFrame)) {
     dispatch_async(dispatch_get_main_queue(), ^{
       [self emitError:@"Camera not ready, please try again"];
     });
@@ -84,10 +91,15 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
   DualCameraLayoutState *photoState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                   outputSize:saveCanvas
                                                                  orientation:photoOrientation];
-  // WYSIWYG: dual stills are composited from VideoDataOutput frames, so mirror
-  // them like the visible preview rather than like non-mirrored selfie export.
-  photoState.frontMirrored = self.frontPreviewMirrored;
-  photoState.backMirrored = self.backPreviewMirrored;
+  if ([self isDualLayout:self.currentLayout]) {
+    // Dual stills are composited from VideoDataOutput frames, so mirror them
+    // like the visible preview.
+    photoState.frontMirrored = self.frontPreviewMirrored;
+    photoState.backMirrored = self.backPreviewMirrored;
+  } else {
+    photoState.frontMirrored = self.frontOutputMirrored;
+    photoState.backMirrored = self.backOutputMirrored;
+  }
 
   dispatch_async(self.realtimeRenderQueue, ^{
     @autoreleasepool {

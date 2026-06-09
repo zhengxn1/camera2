@@ -16,6 +16,11 @@ export interface NativeDualCameraViewProps extends ViewProps {
   pipPositionY: number;
   sxBackOnTop: boolean;
   pipMainIsBack: boolean;
+  frontBeautyEnabled: boolean;
+  frontBeautySmooth: number;
+  frontBeautyBrighten: number;
+  frontBeautyTone: number;
+  frontBeautySharpness: number;
 }
 
 export interface DualCameraModuleSpec {

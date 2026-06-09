@@ -68,6 +68,11 @@
   _frontOutputMirrored = NO;
   _backPreviewMirrored = NO;
   _backOutputMirrored = NO;
+  _frontBeautyEnabled = NO;
+  _frontBeautySmooth = 0;
+  _frontBeautyBrighten = 0;
+  _frontBeautyTone = 0;
+  _frontBeautySharpness = 0;
   [self createPlaceholderViews];
   [self setupPipGestures];
   [self startDeviceOrientationMonitoring];
@@ -131,6 +136,22 @@
       [self updateLayout];
     });
   }
+}
+
+- (void)setFrontBeautySmooth:(CGFloat)value {
+  _frontBeautySmooth = MAX(0, MIN(100, value));
+}
+
+- (void)setFrontBeautyBrighten:(CGFloat)value {
+  _frontBeautyBrighten = MAX(0, MIN(100, value));
+}
+
+- (void)setFrontBeautyTone:(CGFloat)value {
+  _frontBeautyTone = MAX(0, MIN(100, value));
+}
+
+- (void)setFrontBeautySharpness:(CGFloat)value {
+  _frontBeautySharpness = MAX(0, MIN(100, value));
 }
 
 #pragma mark - Layout

@@ -129,8 +129,13 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
     DualCameraLayoutState *warmupState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                      outputSize:outputSize
                                                                     orientation:orientation];
-    warmupState.frontMirrored = self.frontPreviewMirrored;
-    warmupState.backMirrored = self.backPreviewMirrored;
+    if ([self isDualLayout:self.currentLayout]) {
+      warmupState.frontMirrored = self.frontPreviewMirrored;
+      warmupState.backMirrored = self.backPreviewMirrored;
+    } else {
+      warmupState.frontMirrored = self.frontOutputMirrored;
+      warmupState.backMirrored = self.backOutputMirrored;
+    }
     CIImage *warmupImage = nil;
     if (frontFrame && backFrame) {
       warmupImage = [self compositedImageForLayoutState:warmupState
@@ -265,12 +270,15 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
   DualCameraLayoutState *recordingState = [self layoutStateSnapshotForCanvasSize:canvasSize
                                                                        outputSize:outputSize
                                                                       orientation:recordingOrientation];
-  // WYSIWYG: realtime dual recording is composited from VideoDataOutput frames
-  // and should match the visible preview.  The front preview is mirrored by
-  // default, while frontOutputMirrored intentionally remains off for single
-  // camera photo/movie export semantics.
-  recordingState.frontMirrored = self.frontPreviewMirrored;
-  recordingState.backMirrored = self.backPreviewMirrored;
+  if ([self isDualLayout:self.currentLayout]) {
+    // Realtime dual recording is composited from VideoDataOutput frames and
+    // should match the visible preview.
+    recordingState.frontMirrored = self.frontPreviewMirrored;
+    recordingState.backMirrored = self.backPreviewMirrored;
+  } else {
+    recordingState.frontMirrored = self.frontOutputMirrored;
+    recordingState.backMirrored = self.backOutputMirrored;
+  }
   NSDictionary *videoSettings = useWarmSettings
     ? self.warmedRealtimeVideoSettings
     : [self realtimeVideoSettingsForOutputSize:outputSize];

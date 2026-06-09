@@ -21,6 +21,10 @@ interface BottomBarProps {
   onCaptureModeChange: (mode: CaptureMode) => void;
   isFlipped: boolean;
   onFlip: () => void;
+  beautyActive: boolean;
+  beautyPanelVisible: boolean;
+  beautyAvailable: boolean;
+  onBeautyOpen: () => void;
 }
 
 function BottomBarImpl({
@@ -36,6 +40,10 @@ function BottomBarImpl({
   onCaptureModeChange,
   isFlipped,
   onFlip,
+  beautyActive,
+  beautyPanelVisible,
+  beautyAvailable,
+  onBeautyOpen,
 }: BottomBarProps) {
   const disabled = recording || recordingStarting || recordingStopping;
   const videoReady = captureMode === 'video' && !videoLocked;
@@ -53,6 +61,19 @@ function BottomBarImpl({
             icon={item.icon}
           />
         ))}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="打开美颜"
+          disabled={disabled || !beautyAvailable}
+          style={[
+            styles.modeButton,
+            (beautyActive || beautyPanelVisible) && styles.modeButtonSelected,
+            (disabled || !beautyAvailable) && styles.disabledControl,
+          ]}
+          onPress={onBeautyOpen}
+        >
+          <BeautyIcon selected={beautyActive || beautyPanelVisible} />
+        </Pressable>
       </View>
 
       <View style={styles.bottomBar} pointerEvents="box-none">
@@ -160,6 +181,26 @@ function FlipIconImpl({ active }: FlipIconProps) {
 
 const FlipIcon = memo(FlipIconImpl);
 FlipIcon.displayName = 'FlipIcon';
+
+interface BeautyIconProps {
+  selected: boolean;
+}
+
+function BeautyIconImpl({ selected }: BeautyIconProps) {
+  const tone = selected ? styles.modeIconSelected : styles.modeIcon;
+  const fill = selected ? styles.modeIconFillSelected : styles.modeIconFill;
+
+  return (
+    <View style={[styles.beautyIconFace, tone]}>
+      <View style={[styles.beautyIconCheek, fill]} />
+      <View style={[styles.beautyIconSparkleTop, tone]} />
+      <View style={[styles.beautyIconSparkleBottom, tone]} />
+    </View>
+  );
+}
+
+const BeautyIcon = memo(BeautyIconImpl);
+BeautyIcon.displayName = 'BeautyIcon';
 
 interface ModeIconProps {
   name: ModeIconName;

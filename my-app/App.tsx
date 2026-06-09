@@ -21,6 +21,11 @@ import { useScreenSize } from './src/hooks/useScreenSize';
 import { useVideoUnlock } from './src/hooks/useVideoUnlock';
 
 import { AudioLevelIndicator } from './src/components/AudioLevelIndicator';
+import {
+  BeautyPanel,
+  DEFAULT_BEAUTY_SETTINGS,
+  type BeautySettings,
+} from './src/components/BeautyPanel';
 import { BottomBar } from './src/components/BottomBar';
 import { CameraControlsOverlay } from './src/components/CameraControlsOverlay';
 import { CameraSurface } from './src/components/CameraSurface';
@@ -46,6 +51,8 @@ export default function App() {
   const [frontZoom, setFrontZoom] = useState(1);
   const [backZoom, setBackZoom] = useState(1);
   const [menuExpanded, setMenuExpanded] = useState(false);
+  const [beautyPanelVisible, setBeautyPanelVisible] = useState(false);
+  const [beautySettings, setBeautySettings] = useState<BeautySettings>(DEFAULT_BEAUTY_SETTINGS);
   const [unlockSheetVisible, setUnlockSheetVisible] = useState(false);
   const [isFlipped, setIsFlipped] = useState(false);
 
@@ -89,6 +96,7 @@ export default function App() {
     setDualLayoutRatio(0.5);
     resetPip();
     setMenuExpanded(false);
+    setBeautyPanelVisible(false);
     setIsFlipped(false);
   }, [session.interactionDisabled, resetPip]);
 
@@ -130,8 +138,24 @@ export default function App() {
     }
   }, [videoUnlock]);
 
-  const openMenu = useCallback(() => setMenuExpanded(true), []);
+  const openMenu = useCallback(() => {
+    setBeautyPanelVisible(false);
+    setMenuExpanded(true);
+  }, []);
   const closeMenu = useCallback(() => setMenuExpanded(false), []);
+  const beautyAvailable = cameraMode !== CAMERA_MODE.BACK;
+  const beautyActive = beautyAvailable && (
+    beautySettings.smooth > 0 ||
+    beautySettings.brighten > 0 ||
+    beautySettings.tone > 0 ||
+    beautySettings.sharpness > 0
+  );
+  const openBeautyPanel = useCallback(() => {
+    if (session.interactionDisabled || !beautyAvailable) return;
+    setMenuExpanded(false);
+    setBeautyPanelVisible(true);
+  }, [beautyAvailable, session.interactionDisabled]);
+  const closeBeautyPanel = useCallback(() => setBeautyPanelVisible(false), []);
 
   if (cameraStatus !== 'authorized') {
     return <PermissionGate status={cameraStatus} requesting={cameraRequesting} onRequest={requestCamera} />;
@@ -146,6 +170,11 @@ export default function App() {
         pipSize={pipSize}
         pipPosition={pipPosition}
         isFlipped={isFlipped}
+        frontBeautyEnabled={beautyActive}
+        frontBeautySmooth={beautySettings.smooth}
+        frontBeautyBrighten={beautySettings.brighten}
+        frontBeautyTone={beautySettings.tone}
+        frontBeautySharpness={beautySettings.sharpness}
       />
 
       <BottomBar
@@ -161,6 +190,10 @@ export default function App() {
         onCaptureModeChange={handleCaptureModeChange}
         isFlipped={isFlipped}
         onFlip={handleFlip}
+        beautyActive={beautyActive}
+        beautyPanelVisible={beautyPanelVisible}
+        beautyAvailable={beautyAvailable}
+        onBeautyOpen={openBeautyPanel}
       />
 
       <SettingsPopup
@@ -170,6 +203,15 @@ export default function App() {
         aspectRatio={aspect}
         onAspectChange={setAspect}
         disabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
+      />
+
+      <BeautyPanel
+        visible={beautyPanelVisible}
+        settings={beautySettings}
+        disabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
+        available={beautyAvailable}
+        onChange={setBeautySettings}
+        onClose={closeBeautyPanel}
       />
 
       <VideoUnlockSheet

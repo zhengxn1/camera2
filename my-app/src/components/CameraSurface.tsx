@@ -17,6 +17,11 @@ interface CameraSurfaceProps {
   pipSize: number;
   pipPosition: PipPosition;
   isFlipped: boolean;
+  frontBeautyEnabled: boolean;
+  frontBeautySmooth: number;
+  frontBeautyBrighten: number;
+  frontBeautyTone: number;
+  frontBeautySharpness: number;
 }
 
 function CameraSurfaceImpl({
@@ -26,6 +31,11 @@ function CameraSurfaceImpl({
   pipSize,
   pipPosition,
   isFlipped,
+  frontBeautyEnabled,
+  frontBeautySmooth,
+  frontBeautyBrighten,
+  frontBeautyTone,
+  frontBeautySharpness,
 }: CameraSurfaceProps) {
   if (!NativeDualCameraView) {
     return (
@@ -50,6 +60,11 @@ function CameraSurfaceImpl({
       pipPositionY={pipPosition.y}
       sxBackOnTop={isSplit ? !isFlipped : true}
       pipMainIsBack={isPip ? !isFlipped : true}
+      frontBeautyEnabled={frontBeautyEnabled}
+      frontBeautySmooth={frontBeautySmooth}
+      frontBeautyBrighten={frontBeautyBrighten}
+      frontBeautyTone={frontBeautyTone}
+      frontBeautySharpness={frontBeautySharpness}
     />
   );
 }

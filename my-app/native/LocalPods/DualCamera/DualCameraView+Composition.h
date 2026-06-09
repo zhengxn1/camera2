@@ -22,6 +22,7 @@
 - (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size;
 - (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size highQuality:(BOOL)highQuality;
 - (CIImage *)circleAlphaMaskForRect:(CGRect)rect canvasSize:(CGSize)canvasSize;
+- (CIImage *)beautifiedFrontImage:(CIImage *)image;
 
 /// Scale-to-fill + optional horizontal mirror, placed inside targetRect on a canvasSize canvas.
 - (CIImage *)preparedCameraImage:(CIImage *)image
