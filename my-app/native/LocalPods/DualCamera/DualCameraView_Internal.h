@@ -7,6 +7,7 @@
 
 #import "DualCameraView.h"
 #import "DualCameraEventEmitter.h"
+#import "GPUPixelBeautyAdapter.h"
 #import "DualCameraSessionManager.h"
 #import <CoreImage/CoreImage.h>
 #import <AVFoundation/AVFoundation.h>
@@ -92,6 +93,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) CIImage *latestFrontFrame;
 @property (nonatomic, strong) CIImage *latestBackFrame;
 @property (nonatomic, strong) CIContext *ciContext;
+@property (nonatomic, strong) GPUPixelBeautyAdapter *gpupixelBeautyAdapter;
 
 // Dual compositing state
 @property (nonatomic, strong) NSMutableDictionary *pendingDualPhotos;

@@ -205,6 +205,25 @@ export default function App() {
         disabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
       />
 
+      {screen.width > 0 ? (
+        <CameraControlsOverlay
+          cameraMode={cameraMode}
+          aspect={aspect}
+          isFlipped={isFlipped}
+          dualLayoutRatio={dualLayoutRatio}
+          onDualLayoutRatioChange={setDualLayoutRatio}
+          pipSize={pipSize}
+          pipPosition={pipPosition}
+          screenWidth={screen.width}
+          screenHeight={screen.height}
+          backZoom={backZoom}
+          frontZoom={frontZoom}
+          onZoomChange={handleZoomChange}
+          layoutInteractionDisabled={session.interactionDisabled}
+          controlsHidden={beautyPanelVisible}
+        />
+      ) : null}
+
       <BeautyPanel
         visible={beautyPanelVisible}
         settings={beautySettings}
@@ -227,24 +246,6 @@ export default function App() {
           if (!videoUnlock.purchasing) setUnlockSheetVisible(false);
         }}
       />
-
-      {screen.width > 0 ? (
-        <CameraControlsOverlay
-          cameraMode={cameraMode}
-          aspect={aspect}
-          isFlipped={isFlipped}
-          dualLayoutRatio={dualLayoutRatio}
-          onDualLayoutRatioChange={setDualLayoutRatio}
-          pipSize={pipSize}
-          pipPosition={pipPosition}
-          screenWidth={screen.width}
-          screenHeight={screen.height}
-          backZoom={backZoom}
-          frontZoom={frontZoom}
-          onZoomChange={handleZoomChange}
-          layoutInteractionDisabled={session.interactionDisabled}
-        />
-      ) : null}
 
       {media.blocked ? (
         <MediaPermissionBanner onRequest={media.request} onDismiss={media.dismissBlocked} />

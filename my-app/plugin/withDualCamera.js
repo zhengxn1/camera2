@@ -4,6 +4,7 @@ const path = require('path');
 
 const POD_NAME = 'DualCamera';
 const POD_LINE = `  pod '${POD_NAME}', :path => './LocalPods/${POD_NAME}'`;
+const GPUPIXEL_FRAMEWORK_NAME = 'gpupixel.framework';
 
 module.exports = function withDualCamera(config) {
   return withDangerousMod(config, ['ios', copyNativeAndPatchPodfile]);
@@ -19,6 +20,8 @@ function copyNativeAndPatchPodfile(config) {
   const podfilePath = path.join(projectRoot, 'ios', 'Podfile');
   const srcDir = path.join(projectRoot, 'native', 'LocalPods', POD_NAME);
   const destDir = path.join(projectRoot, 'ios', 'LocalPods', POD_NAME);
+  const gpupixelSrc = path.join(projectRoot, 'native', 'ThirdParty', 'GPUPixel', 'ios', GPUPIXEL_FRAMEWORK_NAME);
+  const gpupixelDest = path.join(destDir, 'Frameworks', GPUPIXEL_FRAMEWORK_NAME);
 
   if (!fs.existsSync(srcDir)) {
     throw new Error(`[withDualCamera] Missing native sources: ${srcDir}`);
@@ -30,6 +33,10 @@ function copyNativeAndPatchPodfile(config) {
 
   fs.rmSync(destDir, { recursive: true, force: true });
   copyRecursiveSync(srcDir, destDir);
+  if (fs.existsSync(gpupixelSrc)) {
+    fs.rmSync(path.dirname(gpupixelDest), { recursive: true, force: true });
+    copyRecursiveSync(gpupixelSrc, gpupixelDest);
+  }
 
   const podfile = fs.readFileSync(podfilePath, 'utf8');
   const patchedPodfile = patchPodfile(podfile);

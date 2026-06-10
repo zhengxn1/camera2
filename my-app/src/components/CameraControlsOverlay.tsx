@@ -32,6 +32,7 @@ interface CameraControlsOverlayProps {
   frontZoom: number;
   onZoomChange: (camera: CameraSide, level: number) => void;
   layoutInteractionDisabled?: boolean;
+  controlsHidden?: boolean;
 }
 
 const ZOOM_PILL_W = 48;
@@ -126,7 +127,10 @@ function CameraControlsOverlayImpl({
   frontZoom,
   onZoomChange,
   layoutInteractionDisabled = false,
+  controlsHidden = false,
 }: CameraControlsOverlayProps) {
+  if (controlsHidden) return null;
+
   const canvas = canvasRectForAspect(aspect, screenWidth, screenHeight);
   const ratio = clamp(dualLayoutRatio || 0.5, 0.1, 0.9);
   const bottomControlReserve = aspect === '9:16' ? 70 : 0;

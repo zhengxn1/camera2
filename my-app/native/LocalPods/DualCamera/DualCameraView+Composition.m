@@ -78,12 +78,17 @@
   CGFloat sharpness = MAX(0, MIN(100, self.frontBeautySharpness)) / 100.0;
   if (smooth <= 0 && brighten <= 0 && tone <= 0 && sharpness <= 0) return image;
 
+  CIImage *gpupixelImage = [self.gpupixelBeautyAdapter processFrontImage:image];
+  if (gpupixelImage) {
+    return gpupixelImage;
+  }
+
   CIImage *result = image;
   if (smooth > 0) {
     CIFilter *noise = [CIFilter filterWithName:@"CINoiseReduction"];
     [noise setValue:result forKey:kCIInputImageKey];
-    [noise setValue:@(0.015 + smooth * 0.075) forKey:@"inputNoiseLevel"];
-    [noise setValue:@(0.18 + (1.0 - smooth) * 0.28) forKey:@"inputSharpness"];
+    [noise setValue:@(0.006 + smooth * 0.032) forKey:@"inputNoiseLevel"];
+    [noise setValue:@(0.36 + (1.0 - smooth) * 0.28) forKey:@"inputSharpness"];
     result = noise.outputImage ?: result;
   }
 

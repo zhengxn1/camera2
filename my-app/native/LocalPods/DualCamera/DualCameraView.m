@@ -73,6 +73,7 @@
   _frontBeautyBrighten = 0;
   _frontBeautyTone = 0;
   _frontBeautySharpness = 0;
+  _gpupixelBeautyAdapter = [[GPUPixelBeautyAdapter alloc] initWithCIContext:_ciContext];
   [self createPlaceholderViews];
   [self setupPipGestures];
   [self startDeviceOrientationMonitoring];
@@ -138,16 +139,24 @@
   }
 }
 
+- (void)setFrontBeautyEnabled:(BOOL)enabled {
+  _frontBeautyEnabled = enabled;
+  self.gpupixelBeautyAdapter.enabled = enabled;
+}
+
 - (void)setFrontBeautySmooth:(CGFloat)value {
   _frontBeautySmooth = MAX(0, MIN(100, value));
+  self.gpupixelBeautyAdapter.smooth = _frontBeautySmooth;
 }
 
 - (void)setFrontBeautyBrighten:(CGFloat)value {
   _frontBeautyBrighten = MAX(0, MIN(100, value));
+  self.gpupixelBeautyAdapter.brighten = _frontBeautyBrighten;
 }
 
 - (void)setFrontBeautyTone:(CGFloat)value {
   _frontBeautyTone = MAX(0, MIN(100, value));
+  self.gpupixelBeautyAdapter.tone = _frontBeautyTone;
 }
 
 - (void)setFrontBeautySharpness:(CGFloat)value {
