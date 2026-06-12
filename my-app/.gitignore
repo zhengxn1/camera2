@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# third-party native build caches
+/native/ThirdParty/GPUPixel/_build/
