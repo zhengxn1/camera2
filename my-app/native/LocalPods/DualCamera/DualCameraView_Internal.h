@@ -77,6 +77,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, assign) BOOL singleRecordingStopRequested;
 @property (nonatomic, strong) UIView *frontPreviewView;
 @property (nonatomic, strong) UIView *backPreviewView;
+@property (nonatomic, strong) UIImageView *frontBeautyPreviewImageView;
 @property (nonatomic, strong) dispatch_queue_t sessionQueue;
 @property (nonatomic, assign) AVCaptureDevicePosition singleCameraPosition;
 @property (nonatomic, assign) BOOL usingMultiCam;
@@ -94,6 +95,8 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) CIImage *latestBackFrame;
 @property (nonatomic, strong) CIContext *ciContext;
 @property (nonatomic, strong) GPUPixelBeautyAdapter *gpupixelBeautyAdapter;
+@property (nonatomic, assign) CFTimeInterval lastFrontBeautyPreviewUpdateTime;
+@property (nonatomic, assign) BOOL frontBeautyPreviewRenderInFlight;
 
 // Dual compositing state
 @property (nonatomic, strong) NSMutableDictionary *pendingDualPhotos;

@@ -60,6 +60,80 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
   });
 }
 
+#pragma mark - Realtime beauty preview
+
+- (BOOL)shouldRenderFrontBeautyPreview {
+  if (!self.frontBeautyEnabled) return NO;
+  return self.frontBeautySmooth > 0 ||
+         self.frontBeautyBrighten > 0 ||
+         self.frontBeautyTone > 0 ||
+         self.frontBeautySharpness > 0;
+}
+
+- (CIImage *)previewImageFromFrontImage:(CIImage *)image {
+  if (!image) return nil;
+
+  CIImage *result = [self beautifiedFrontImage:image];
+  CGFloat width = CGRectGetWidth(result.extent);
+  if (self.frontPreviewMirrored && width > 0) {
+    CGAffineTransform mirror = CGAffineTransformMakeTranslation(width, 0);
+    mirror = CGAffineTransformScale(mirror, -1, 1);
+    result = [result imageByApplyingTransform:mirror];
+  }
+
+  if (result.extent.origin.x != 0 || result.extent.origin.y != 0) {
+    result = [result imageByApplyingTransform:CGAffineTransformMakeTranslation(-result.extent.origin.x,
+                                                                               -result.extent.origin.y)];
+  }
+  return result;
+}
+
+- (void)renderFrontBeautyPreviewFrame:(CIImage *)frontFrame {
+  if (!frontFrame || ![self shouldRenderFrontBeautyPreview]) {
+    return;
+  }
+
+  CFTimeInterval now = CFAbsoluteTimeGetCurrent();
+  if (self.frontBeautyPreviewRenderInFlight ||
+      now - self.lastFrontBeautyPreviewUpdateTime < (1.0 / 15.0)) {
+    return;
+  }
+  self.frontBeautyPreviewRenderInFlight = YES;
+  self.lastFrontBeautyPreviewUpdateTime = now;
+
+  dispatch_async(self.realtimeRenderQueue, ^{
+    @autoreleasepool {
+      UIImage *previewImage = nil;
+      if ([self shouldRenderFrontBeautyPreview]) {
+        CIImage *renderImage = [self previewImageFromFrontImage:frontFrame];
+        CGRect renderRect = renderImage.extent;
+        if (renderImage && !CGRectIsEmpty(renderRect)) {
+          CGImageRef cgImage = [self.ciContext createCGImage:renderImage fromRect:renderRect];
+          if (cgImage) {
+            previewImage = [UIImage imageWithCGImage:cgImage
+                                               scale:[UIScreen mainScreen].scale
+                                         orientation:UIImageOrientationUp];
+            CGImageRelease(cgImage);
+          }
+        }
+      }
+
+      dispatch_async(dispatch_get_main_queue(), ^{
+        self.frontBeautyPreviewRenderInFlight = NO;
+        if (previewImage && [self shouldRenderFrontBeautyPreview]) {
+          self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
+          self.frontBeautyPreviewImageView.image = previewImage;
+          self.frontBeautyPreviewImageView.hidden = NO;
+          [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
+        } else {
+          self.frontBeautyPreviewImageView.hidden = YES;
+          self.frontBeautyPreviewImageView.image = nil;
+        }
+      });
+    }
+  });
+}
+
 #pragma mark - Multicam WYSIWYG photo capture
 
 // Saves the same composited camera frames used by realtime recording. This keeps
@@ -380,6 +454,7 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
     @synchronized(self) {
       self.latestFrontFrame = ciImage;
     }
+    [self renderFrontBeautyPreviewFrame:ciImage];
   } else {
     @synchronized(self) {
       self.latestBackFrame = ciImage;

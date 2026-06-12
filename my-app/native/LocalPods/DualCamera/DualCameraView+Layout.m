@@ -221,6 +221,10 @@
   if (self.frontPreviewLayer) self.frontPreviewLayer.frame = self.frontPreviewView.bounds;
   if (self.backPreviewLayer) self.backPreviewLayer.frame = self.backPreviewView.bounds;
   if (self.singlePreviewLayer) self.singlePreviewLayer.frame = [self targetPreviewViewForPosition:self.singleCameraPosition].bounds;
+  if (self.frontBeautyPreviewImageView) {
+    self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
+    [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
+  }
 }
 
 #pragma mark - Preview view / layer management
@@ -243,6 +247,14 @@
   [self addSubview:fv];
   self.frontPreviewView = fv;
 
+  UIImageView *beautyPreview = [[UIImageView alloc] initWithFrame:fv.bounds];
+  beautyPreview.backgroundColor = [UIColor clearColor];
+  beautyPreview.contentMode = UIViewContentModeScaleAspectFill;
+  beautyPreview.clipsToBounds = YES;
+  beautyPreview.hidden = YES;
+  [fv addSubview:beautyPreview];
+  self.frontBeautyPreviewImageView = beautyPreview;
+
   [self setupPipGestures];
 
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -257,6 +269,9 @@
   self.frontPreviewLayer = nil;
   self.backPreviewLayer = nil;
   self.singlePreviewLayer = nil;
+  if (self.frontBeautyPreviewImageView) {
+    [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
+  }
 }
 
 - (void)clearPreviewLayersOnMainQueue {

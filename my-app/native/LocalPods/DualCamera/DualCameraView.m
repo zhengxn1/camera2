@@ -73,6 +73,8 @@
   _frontBeautyBrighten = 0;
   _frontBeautyTone = 0;
   _frontBeautySharpness = 0;
+  _lastFrontBeautyPreviewUpdateTime = 0;
+  _frontBeautyPreviewRenderInFlight = NO;
   _gpupixelBeautyAdapter = [[GPUPixelBeautyAdapter alloc] initWithCIContext:_ciContext];
   [self createPlaceholderViews];
   [self setupPipGestures];
@@ -81,6 +83,21 @@
 }
 
 #pragma mark - Properties (layout setters)
+
+- (BOOL)hasActiveFrontBeautyValues {
+  return self.frontBeautySmooth > 0 ||
+         self.frontBeautyBrighten > 0 ||
+         self.frontBeautyTone > 0 ||
+         self.frontBeautySharpness > 0;
+}
+
+- (void)hideFrontBeautyPreviewIfInactive {
+  if (self.frontBeautyEnabled && [self hasActiveFrontBeautyValues]) return;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self.frontBeautyPreviewImageView.hidden = YES;
+    self.frontBeautyPreviewImageView.image = nil;
+  });
+}
 
 - (void)setLayoutMode:(NSString *)layoutMode {
   NSString *nextLayout = layoutMode ?: @"back";
@@ -142,25 +159,30 @@
 - (void)setFrontBeautyEnabled:(BOOL)enabled {
   _frontBeautyEnabled = enabled;
   self.gpupixelBeautyAdapter.enabled = enabled;
+  [self hideFrontBeautyPreviewIfInactive];
 }
 
 - (void)setFrontBeautySmooth:(CGFloat)value {
   _frontBeautySmooth = MAX(0, MIN(100, value));
   self.gpupixelBeautyAdapter.smooth = _frontBeautySmooth;
+  [self hideFrontBeautyPreviewIfInactive];
 }
 
 - (void)setFrontBeautyBrighten:(CGFloat)value {
   _frontBeautyBrighten = MAX(0, MIN(100, value));
   self.gpupixelBeautyAdapter.brighten = _frontBeautyBrighten;
+  [self hideFrontBeautyPreviewIfInactive];
 }
 
 - (void)setFrontBeautyTone:(CGFloat)value {
   _frontBeautyTone = MAX(0, MIN(100, value));
   self.gpupixelBeautyAdapter.tone = _frontBeautyTone;
+  [self hideFrontBeautyPreviewIfInactive];
 }
 
 - (void)setFrontBeautySharpness:(CGFloat)value {
   _frontBeautySharpness = MAX(0, MIN(100, value));
+  [self hideFrontBeautyPreviewIfInactive];
 }
 
 #pragma mark - Layout
