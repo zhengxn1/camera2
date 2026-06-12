@@ -5,6 +5,22 @@ const path = require('path');
 const POD_NAME = 'DualCamera';
 const POD_LINE = `  pod '${POD_NAME}', :path => './LocalPods/${POD_NAME}'`;
 const GPUPIXEL_FRAMEWORK_NAME = 'gpupixel.framework';
+const FMT_COMPAT_MARKER = 'Fix fmt 11 constexpr format-string compilation';
+const FMT_COMPAT_BLOCK = [
+  '',
+  '    # Fix fmt 11 constexpr format-string compilation on newer Xcode/Clang.',
+  '    installer.pods_project.targets.each do |target|',
+  "      next unless target.name == 'fmt'",
+  '',
+  '      target.build_configurations.each do |config|',
+  "        config.build_settings['CLANG_CXX_LANGUAGE_STANDARD'] = 'c++17'",
+  "        config.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'",
+  '',
+  "        definitions = config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']",
+  "        definitions << 'FMT_USE_NONTYPE_TEMPLATE_ARGS=0' unless definitions.include?('FMT_USE_NONTYPE_TEMPLATE_ARGS=0')",
+  '      end',
+  '    end',
+];
 
 module.exports = function withDualCamera(config) {
   return withDangerousMod(config, ['ios', copyNativeAndPatchPodfile]);
@@ -63,10 +79,6 @@ function copyRecursiveSync(srcDir, destDir) {
 }
 
 function patchPodfile(podfile) {
-  if (podfile.includes(`pod '${POD_NAME}'`)) {
-    return podfile;
-  }
-
   const newline = podfile.includes('\r\n') ? '\r\n' : '\n';
   const lines = podfile.split(/\r?\n/);
   const targetStart = lines.findIndex((line) => /^\s*target\s+['"][^'"]+['"]\s+do\s*$/.test(line));
@@ -80,14 +92,41 @@ function patchPodfile(podfile) {
     throw new Error(`[withDualCamera] Could not find the end of the iOS target block in Podfile`);
   }
 
-  const useExpoModulesIndex = findLineInRange(lines, targetStart + 1, targetEnd, /^\s*use_expo_modules!(?:\s|\(|$)/);
-  const postInstallIndex = findLineInRange(lines, targetStart + 1, targetEnd, /^\s*post_install\s+do\b/);
-  const insertAt = useExpoModulesIndex !== -1
-    ? useExpoModulesIndex + 1
-    : (postInstallIndex !== -1 ? postInstallIndex : targetEnd);
+  if (!podfile.includes(`pod '${POD_NAME}'`)) {
+    const useExpoModulesIndex = findLineInRange(lines, targetStart + 1, targetEnd, /^\s*use_expo_modules!(?:\s|\(|$)/);
+    const postInstallIndex = findLineInRange(lines, targetStart + 1, targetEnd, /^\s*post_install\s+do\b/);
+    const insertAt = useExpoModulesIndex !== -1
+      ? useExpoModulesIndex + 1
+      : (postInstallIndex !== -1 ? postInstallIndex : targetEnd);
 
-  lines.splice(insertAt, 0, POD_LINE);
+    lines.splice(insertAt, 0, POD_LINE);
+  }
+
+  patchFmtCompatibility(lines, targetStart);
   return lines.join(newline);
+}
+
+function patchFmtCompatibility(lines, targetStart) {
+  if (lines.some((line) => line.includes(FMT_COMPAT_MARKER))) {
+    return;
+  }
+
+  const targetEnd = findMatchingEnd(lines, targetStart);
+  if (targetEnd === -1) {
+    throw new Error(`[withDualCamera] Could not find the end of the iOS target block in Podfile`);
+  }
+
+  const postInstallIndex = findLineInRange(lines, targetStart + 1, targetEnd, /^\s*post_install\s+do\b/);
+  if (postInstallIndex === -1) {
+    throw new Error(`[withDualCamera] Could not find post_install block in Podfile`);
+  }
+
+  const postInstallEnd = findMatchingEnd(lines, postInstallIndex);
+  if (postInstallEnd === -1) {
+    throw new Error(`[withDualCamera] Could not find the end of the post_install block in Podfile`);
+  }
+
+  lines.splice(postInstallEnd, 0, ...FMT_COMPAT_BLOCK);
 }
 
 function findLineInRange(lines, start, end, pattern) {
