@@ -4,6 +4,9 @@
 #if __has_include(<gpupixel/gpupixel.h>)
 #import <gpupixel/gpupixel.h>
 #define DUAL_CAMERA_HAS_GPUPIXEL 1
+#elif __has_include("gpupixel.h")
+#import "gpupixel.h"
+#define DUAL_CAMERA_HAS_GPUPIXEL 1
 #else
 #define DUAL_CAMERA_HAS_GPUPIXEL 0
 #endif
@@ -16,6 +19,11 @@
 @property (nonatomic, strong) CIContext *ciContext;
 @property (nonatomic, assign, readwrite) BOOL available;
 @property (nonatomic, assign) BOOL didLogAvailability;
+@property (nonatomic, assign) BOOL didLogUnavailable;
+@property (nonatomic, assign) BOOL didLogNoEffectParams;
+@property (nonatomic, assign) BOOL didLogInvalidInput;
+@property (nonatomic, assign) BOOL didLogSetupFailure;
+@property (nonatomic, assign) BOOL didLogOutputFailure;
 @end
 
 @implementation GPUPixelBeautyAdapter {
@@ -35,6 +43,7 @@
     _smooth = 0;
     _brighten = 0;
     _tone = 0;
+    NSLog(@"[DualCamera][GPUPixel] adapter init compiled=%d available=%d", DUAL_CAMERA_HAS_GPUPIXEL, _available);
   }
   return self;
 }
@@ -45,31 +54,69 @@
   _beautyFilter = gpupixel::BeautyFaceFilter::Create();
   _sink = gpupixel::SinkRawData::Create();
   if (!_source || !_beautyFilter || !_sink) {
+    if (!self.didLogSetupFailure) {
+      self.didLogSetupFailure = YES;
+      NSLog(@"[DualCamera][GPUPixel] setup failed source=%d beauty=%d sink=%d",
+            _source != nullptr, _beautyFilter != nullptr, _sink != nullptr);
+    }
     return NO;
   }
   _source->AddSink(_beautyFilter);
   _beautyFilter->AddSink(_sink);
+  NSLog(@"[DualCamera][GPUPixel] raw beauty pipeline setup complete");
   return YES;
 #else
+  if (!self.didLogSetupFailure) {
+    self.didLogSetupFailure = YES;
+    NSLog(@"[DualCamera][GPUPixel] setup skipped because gpupixel headers/framework were not visible at compile time");
+  }
   return NO;
 #endif
 }
 
+- (void)setEnabled:(BOOL)enabled {
+  _enabled = enabled;
+  NSLog(@"[DualCamera][GPUPixel] enabled=%d available=%d smooth=%.1f brighten=%.1f tone=%.1f",
+        enabled, self.available, self.smooth, self.brighten, self.tone);
+}
+
 - (void)setSmooth:(CGFloat)value {
   _smooth = MAX(0, MIN(100, value));
+  if (self.enabled) {
+    NSLog(@"[DualCamera][GPUPixel] smooth=%.1f", _smooth);
+  }
 }
 
 - (void)setBrighten:(CGFloat)value {
   _brighten = MAX(0, MIN(100, value));
+  if (self.enabled) {
+    NSLog(@"[DualCamera][GPUPixel] brighten=%.1f", _brighten);
+  }
 }
 
 - (void)setTone:(CGFloat)value {
   _tone = MAX(0, MIN(100, value));
+  if (self.enabled) {
+    NSLog(@"[DualCamera][GPUPixel] tone=%.1f", _tone);
+  }
 }
 
 - (nullable CIImage *)processFrontImage:(CIImage *)image {
-  if (!image || !self.enabled || !self.available ||
-      (self.smooth <= 0 && self.brighten <= 0 && self.tone <= 0)) {
+  if (!image || !self.enabled) {
+    return nil;
+  }
+  if (!self.available) {
+    if (!self.didLogUnavailable) {
+      self.didLogUnavailable = YES;
+      NSLog(@"[DualCamera][GPUPixel] unavailable; Core Image fallback will be used");
+    }
+    return nil;
+  }
+  if (self.smooth <= 0 && self.brighten <= 0 && self.tone <= 0) {
+    if (!self.didLogNoEffectParams) {
+      self.didLogNoEffectParams = YES;
+      NSLog(@"[DualCamera][GPUPixel] skipped because smooth/brighten/tone are zero");
+    }
     return nil;
   }
 
@@ -85,6 +132,11 @@
   NSInteger width = (NSInteger)llround(CGRectGetWidth(extent));
   NSInteger height = (NSInteger)llround(CGRectGetHeight(extent));
   if (width <= 0 || height <= 0 || !self.ciContext) {
+    if (!self.didLogInvalidInput) {
+      self.didLogInvalidInput = YES;
+      NSLog(@"[DualCamera][GPUPixel] invalid input width=%ld height=%ld ciContext=%d",
+            (long)width, (long)height, self.ciContext != nil);
+    }
     return nil;
   }
 
@@ -112,6 +164,11 @@
   int outputWidth = _sink->GetWidth();
   int outputHeight = _sink->GetHeight();
   if (!outputBuffer || outputWidth <= 0 || outputHeight <= 0) {
+    if (!self.didLogOutputFailure) {
+      self.didLogOutputFailure = YES;
+      NSLog(@"[DualCamera][GPUPixel] output unavailable buffer=%d width=%d height=%d",
+            outputBuffer != nullptr, outputWidth, outputHeight);
+    }
     if (colorSpace) CGColorSpaceRelease(colorSpace);
     return nil;
   }

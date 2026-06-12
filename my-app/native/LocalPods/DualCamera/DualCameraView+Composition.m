@@ -82,6 +82,11 @@
   if (gpupixelImage) {
     return gpupixelImage;
   }
+  static BOOL didLogGPUPixelFallback = NO;
+  if (!didLogGPUPixelFallback) {
+    didLogGPUPixelFallback = YES;
+    NSLog(@"[DualCamera][GPUPixel] using Core Image beauty fallback");
+  }
 
   CIImage *result = image;
   if (smooth > 0) {
