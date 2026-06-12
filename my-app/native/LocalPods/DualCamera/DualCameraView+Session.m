@@ -118,14 +118,15 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
     AVCaptureVideoPreviewLayer *bl = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:self.multiCamSession];
     bl.videoGravity = AVLayerVideoGravityResizeAspectFill;
     bl.frame = self.backPreviewView.bounds;
-    [self.backPreviewView.layer addSublayer:bl];
+    [self.backPreviewView.layer insertSublayer:bl atIndex:0];
     self.backPreviewLayer = bl;
 
     AVCaptureVideoPreviewLayer *fl = [[AVCaptureVideoPreviewLayer alloc] initWithSessionWithNoConnection:self.multiCamSession];
     fl.videoGravity = AVLayerVideoGravityResizeAspectFill;
     fl.frame = self.frontPreviewView.bounds;
-    [self.frontPreviewView.layer addSublayer:fl];
+    [self.frontPreviewView.layer insertSublayer:fl atIndex:0];
     self.frontPreviewLayer = fl;
+    [self bringFrontBeautyPreviewToFront];
 
     [self updateLayout];
   });
@@ -445,8 +446,11 @@ static const BOOL DualCameraHDRDebugEnabled = YES;
     AVCaptureVideoPreviewLayer *layer = [AVCaptureVideoPreviewLayer layerWithSession:session];
     layer.videoGravity = AVLayerVideoGravityResizeAspectFill;
     layer.frame = targetView.bounds;
-    [targetView.layer addSublayer:layer];
+    [targetView.layer insertSublayer:layer atIndex:0];
     self.singlePreviewLayer = layer;
+    if (position == AVCaptureDevicePositionFront) {
+      [self bringFrontBeautyPreviewToFront];
+    }
     [self updateLayout];
     [self applyCurrentVideoOrientationAndMirroring];
   });

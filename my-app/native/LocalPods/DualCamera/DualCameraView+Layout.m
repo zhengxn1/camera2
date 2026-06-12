@@ -221,10 +221,7 @@
   if (self.frontPreviewLayer) self.frontPreviewLayer.frame = self.frontPreviewView.bounds;
   if (self.backPreviewLayer) self.backPreviewLayer.frame = self.backPreviewView.bounds;
   if (self.singlePreviewLayer) self.singlePreviewLayer.frame = [self targetPreviewViewForPosition:self.singleCameraPosition].bounds;
-  if (self.frontBeautyPreviewImageView) {
-    self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
-    [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
-  }
+  [self bringFrontBeautyPreviewToFront];
 }
 
 #pragma mark - Preview view / layer management
@@ -269,15 +266,23 @@
   self.frontPreviewLayer = nil;
   self.backPreviewLayer = nil;
   self.singlePreviewLayer = nil;
-  if (self.frontBeautyPreviewImageView) {
-    [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
-  }
+  [self bringFrontBeautyPreviewToFront];
 }
 
 - (void)clearPreviewLayersOnMainQueue {
   dispatch_async(dispatch_get_main_queue(), ^{
     [self removePreviewLayers];
   });
+}
+
+- (void)bringFrontBeautyPreviewToFront {
+  if (!self.frontBeautyPreviewImageView || !self.frontPreviewView) return;
+  self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
+  if (self.frontBeautyPreviewImageView.superview != self.frontPreviewView) {
+    [self.frontBeautyPreviewImageView removeFromSuperview];
+    [self.frontPreviewView addSubview:self.frontBeautyPreviewImageView];
+  }
+  [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
 }
 
 #pragma mark - Convenience helpers

@@ -124,7 +124,7 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
           self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
           self.frontBeautyPreviewImageView.image = previewImage;
           self.frontBeautyPreviewImageView.hidden = NO;
-          [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
+          [self bringFrontBeautyPreviewToFront];
         } else {
           self.frontBeautyPreviewImageView.hidden = YES;
           self.frontBeautyPreviewImageView.image = nil;

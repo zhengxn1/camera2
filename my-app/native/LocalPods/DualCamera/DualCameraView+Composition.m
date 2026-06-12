@@ -197,7 +197,8 @@
   }
   if ([self isDualLayout:layout] && !front && !back) return nil;
   if (hasFrontFrame) {
-    front = [self beautifiedFrontImage:front];
+    // 临时停用保存/录像合成路径的美颜，先集中修复实时预览。
+    // front = [self beautifiedFrontImage:front];
   }
 
   CIImage *result = [self blackCanvasSize:canvasSize];
