@@ -43,6 +43,7 @@
     _smooth = 0;
     _brighten = 0;
     _tone = 0;
+    _sharpness = 0;
     NSLog(@"[DualCamera][GPUPixel] adapter init compiled=%d available=%d", DUAL_CAMERA_HAS_GPUPIXEL, _available);
   }
   return self;
@@ -76,8 +77,8 @@
 
 - (void)setEnabled:(BOOL)enabled {
   _enabled = enabled;
-  NSLog(@"[DualCamera][GPUPixel] enabled=%d available=%d smooth=%.1f brighten=%.1f tone=%.1f",
-        enabled, self.available, self.smooth, self.brighten, self.tone);
+  NSLog(@"[DualCamera][GPUPixel] enabled=%d available=%d smooth=%.1f brighten=%.1f tone=%.1f sharpness=%.1f",
+        enabled, self.available, self.smooth, self.brighten, self.tone, self.sharpness);
 }
 
 - (void)setSmooth:(CGFloat)value {
@@ -101,6 +102,13 @@
   }
 }
 
+- (void)setSharpness:(CGFloat)value {
+  _sharpness = MAX(0, MIN(100, value));
+  if (self.enabled) {
+    NSLog(@"[DualCamera][GPUPixel] sharpness=%.1f", _sharpness);
+  }
+}
+
 - (nullable CIImage *)processFrontImage:(CIImage *)image {
   if (!image || !self.enabled) {
     return nil;
@@ -112,10 +120,10 @@
     }
     return nil;
   }
-  if (self.smooth <= 0 && self.brighten <= 0 && self.tone <= 0) {
+  if (self.smooth <= 0 && self.brighten <= 0 && self.tone <= 0 && self.sharpness <= 0) {
     if (!self.didLogNoEffectParams) {
       self.didLogNoEffectParams = YES;
-      NSLog(@"[DualCamera][GPUPixel] skipped because smooth/brighten/tone are zero");
+      NSLog(@"[DualCamera][GPUPixel] skipped because all beauty params are zero");
     }
     return nil;
   }
@@ -156,8 +164,12 @@
                   format:kCIFormatRGBA8
               colorSpace:colorSpace];
 
-  _beautyFilter->SetBlurAlpha((float)(self.smooth / 100.0));
-  _beautyFilter->SetWhite((float)(MAX(self.brighten, self.tone) / 100.0));
+  float blurAlpha = (float)(self.smooth / 100.0);
+  float white = (float)(MAX(self.brighten, self.tone) / 100.0);
+  float sharpen = (float)(self.sharpness / 100.0);
+  _beautyFilter->SetBlurAlpha(blurAlpha);
+  _beautyFilter->SetWhite(white);
+  _beautyFilter->SetSharpen(sharpen);
   _source->ProcessData((const uint8_t *)rgbaData.bytes, width, height, rowBytes, gpupixel::GPUPIXEL_FRAME_TYPE_RGBA);
 
   const uint8_t *outputBuffer = _sink->GetRgbaBuffer();
@@ -184,7 +196,8 @@
 
   if (!self.didLogAvailability) {
     self.didLogAvailability = YES;
-    NSLog(@"[DualCamera][GPUPixel] raw beauty pipeline active size=%dx%d", outputWidth, outputHeight);
+    NSLog(@"[DualCamera][GPUPixel] raw beauty pipeline active size=%dx%d blur=%.3f white=%.3f sharpen=%.3f",
+          outputWidth, outputHeight, blurAlpha, white, sharpen);
   }
   return outputImage;
 #else

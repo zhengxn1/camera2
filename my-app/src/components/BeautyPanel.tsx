@@ -158,12 +158,13 @@ function BeautySlider({ value, disabled, onChange }: BeautySliderProps) {
         onLayout={event => setTrackWidth(Math.max(1, event.nativeEvent.layout.width))}
         onStartShouldSetResponder={() => true}
         onMoveShouldSetResponder={() => true}
+        onResponderTerminationRequest={() => false}
         onResponderGrant={event => handleTouch(event.nativeEvent.locationX)}
         onResponderMove={event => handleTouch(event.nativeEvent.locationX)}
       >
-        <View style={styles.beautySliderRail} />
-        <View style={[styles.beautySliderFill, { width: `${percent}%` }]} />
-        <View style={[styles.beautySliderThumb, { left: `${percent}%` }]} />
+        <View pointerEvents="none" style={styles.beautySliderRail} />
+        <View pointerEvents="none" style={[styles.beautySliderFill, { width: `${percent}%` }]} />
+        <View pointerEvents="none" style={[styles.beautySliderThumb, { left: `${percent}%` }]} />
       </View>
     </View>
   );

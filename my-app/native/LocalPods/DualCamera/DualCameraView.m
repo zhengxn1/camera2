@@ -182,6 +182,7 @@
 
 - (void)setFrontBeautySharpness:(CGFloat)value {
   _frontBeautySharpness = MAX(0, MIN(100, value));
+  self.gpupixelBeautyAdapter.sharpness = _frontBeautySharpness;
   [self hideFrontBeautyPreviewIfInactive];
 }
 

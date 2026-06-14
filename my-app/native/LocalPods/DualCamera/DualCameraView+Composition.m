@@ -196,8 +196,26 @@
     front = back;
   }
   if ([self isDualLayout:layout] && !front && !back) return nil;
-  if (hasFrontFrame) {
+
+  BOOL hasActiveBeauty = self.frontBeautyEnabled &&
+    (self.frontBeautySmooth > 0 ||
+     self.frontBeautyBrighten > 0 ||
+     self.frontBeautyTone > 0 ||
+     self.frontBeautySharpness > 0);
+  BOOL shouldBeautifyFront = hasFrontFrame && hasActiveBeauty && ![layout isEqualToString:@"back"];
+  static BOOL didLogSaveBeautyApplied = NO;
+  static BOOL didLogSaveBeautySkippedBack = NO;
+  if (shouldBeautifyFront) {
+    if (!didLogSaveBeautyApplied) {
+      didLogSaveBeautyApplied = YES;
+      NSLog(@"[DualCamera][BeautySave] applying front beauty layout=%@ front=%d back=%d smooth=%.1f brighten=%.1f tone=%.1f sharpness=%.1f",
+            layout, front != nil, back != nil,
+            self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyTone, self.frontBeautySharpness);
+    }
     front = [self beautifiedFrontImage:front];
+  } else if ([layout isEqualToString:@"back"] && hasActiveBeauty && !didLogSaveBeautySkippedBack) {
+    didLogSaveBeautySkippedBack = YES;
+    NSLog(@"[DualCamera][BeautySave] skipped beauty for back layout front=%d back=%d", front != nil, back != nil);
   }
 
   CIImage *result = [self blackCanvasSize:canvasSize];

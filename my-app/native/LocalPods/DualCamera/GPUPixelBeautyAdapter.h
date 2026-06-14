@@ -10,6 +10,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat smooth;
 @property (nonatomic, assign) CGFloat brighten;
 @property (nonatomic, assign) CGFloat tone;
+@property (nonatomic, assign) CGFloat sharpness;
 
 - (instancetype)initWithCIContext:(CIContext *)ciContext NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
