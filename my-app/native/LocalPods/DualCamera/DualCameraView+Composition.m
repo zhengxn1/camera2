@@ -103,13 +103,20 @@
     result = noise.outputImage ?: result;
   }
 
-  if (brighten > 0 || ([pipeline isEqualToString:@"coreimage"] && whiten > 0)) {
+  if (brighten > 0 || whiten > 0) {
     CIFilter *color = [CIFilter filterWithName:@"CIColorControls"];
     [color setValue:result forKey:kCIInputImageKey];
-    [color setValue:@(brighten * 0.10 + ([pipeline isEqualToString:@"coreimage"] ? whiten * 0.045 : 0)) forKey:kCIInputBrightnessKey];
-    [color setValue:@(1.0 + brighten * 0.018) forKey:kCIInputSaturationKey];
-    [color setValue:@(1.0 + brighten * 0.02 + ([pipeline isEqualToString:@"coreimage"] ? whiten * 0.02 : 0)) forKey:kCIInputContrastKey];
+    [color setValue:@(brighten * 0.10 + whiten * 0.10) forKey:kCIInputBrightnessKey];
+    [color setValue:@(1.0 + brighten * 0.018 - whiten * 0.04) forKey:kCIInputSaturationKey];
+    [color setValue:@(1.0 + brighten * 0.02 + whiten * 0.025) forKey:kCIInputContrastKey];
     result = color.outputImage ?: result;
+  }
+
+  if (whiten > 0) {
+    CIFilter *exposure = [CIFilter filterWithName:@"CIExposureAdjust"];
+    [exposure setValue:result forKey:kCIInputImageKey];
+    [exposure setValue:@(whiten * 0.16) forKey:kCIInputEVKey];
+    result = exposure.outputImage ?: result;
   }
 
   static NSMutableSet<NSString *> *loggedSources = nil;
@@ -121,9 +128,9 @@
   @synchronized(loggedSources) {
     if (![loggedSources containsObject:logKey]) {
       [loggedSources addObject:logKey];
-      NSLog(@"[BeautyProcess] source=%@ pipeline=%@ smooth=%.1f brighten=%.1f whiten=%.1f input=%.0fx%.0f output=%.0fx%.0f",
+      NSLog(@"[BeautyProcess] source=%@ pipeline=%@ smooth=%.1f brighten=%.1f whiten=%.1f ciWhite=%.3f input=%.0fx%.0f output=%.0fx%.0f",
             logKey, pipeline,
-            self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten,
+            self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten, whiten,
             image.extent.size.width, image.extent.size.height,
             result.extent.size.width, result.extent.size.height);
     }
