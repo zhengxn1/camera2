@@ -147,9 +147,16 @@ export default function App() {
   const beautyActive = beautyAvailable && (
     beautySettings.smooth > 0 ||
     beautySettings.brighten > 0 ||
-    beautySettings.tone > 0 ||
-    beautySettings.sharpness > 0
+    beautySettings.whiten > 0
   );
+
+  useEffect(() => {
+    console.info(
+      `[BeautyJS] enabled=${beautyActive ? 1 : 0} smooth=${beautySettings.smooth} ` +
+      `brighten=${beautySettings.brighten} whiten=${beautySettings.whiten} ` +
+      `mode=${cameraMode} capture=${captureMode}`,
+    );
+  }, [beautyActive, beautySettings.smooth, beautySettings.brighten, beautySettings.whiten, cameraMode, captureMode]);
   const openBeautyPanel = useCallback(() => {
     if (session.interactionDisabled || !beautyAvailable) return;
     setMenuExpanded(false);
@@ -173,8 +180,7 @@ export default function App() {
         frontBeautyEnabled={beautyActive}
         frontBeautySmooth={beautySettings.smooth}
         frontBeautyBrighten={beautySettings.brighten}
-        frontBeautyTone={beautySettings.tone}
-        frontBeautySharpness={beautySettings.sharpness}
+        frontBeautyWhiten={beautySettings.whiten}
       />
 
       <BottomBar

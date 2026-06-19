@@ -34,6 +34,14 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
       BOOL useWysiwygFrames = self.usingMultiCam &&
         ([self isDualLayout:self.currentLayout] ||
          ([self.currentLayout isEqualToString:@"front"] && self.frontBeautyEnabled));
+      NSLog(@"[BeautyCapture] photo layout=%@ usingMultiCam=%d useWysiwygFrames=%d beautyEnabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
+            self.currentLayout ?: @"unknown",
+            self.usingMultiCam,
+            useWysiwygFrames,
+            self.frontBeautyEnabled,
+            self.frontBeautySmooth,
+            self.frontBeautyBrighten,
+            self.frontBeautyWhiten);
       if (useWysiwygFrames) {
         [self captureWysiwygDualPhotoWithCanvasSize:canvasSizeForPhoto];
       } else {
@@ -66,14 +74,13 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
   if (!self.frontBeautyEnabled) return NO;
   return self.frontBeautySmooth > 0 ||
          self.frontBeautyBrighten > 0 ||
-         self.frontBeautyTone > 0 ||
-         self.frontBeautySharpness > 0;
+         self.frontBeautyWhiten > 0;
 }
 
 - (CIImage *)previewImageFromFrontImage:(CIImage *)image {
   if (!image) return nil;
 
-  CIImage *result = [self beautifiedFrontImage:image];
+  CIImage *result = [self beautifiedFrontImage:image source:@"preview"];
   CGFloat width = CGRectGetWidth(result.extent);
   if (self.frontPreviewMirrored && width > 0) {
     CGAffineTransform mirror = CGAffineTransformMakeTranslation(width, 0);
@@ -180,7 +187,8 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
       CIImage *composited = [self compositedImageForLayoutState:photoState
                                                           front:frontFrame
                                                            back:backFrame
-                                                    highQuality:YES];
+                                                    highQuality:YES
+                                                         source:@"photo"];
       NSString *path = [self saveCIImageAsJPEG:composited];
       dispatch_async(dispatch_get_main_queue(), ^{
         if (path) {
@@ -227,6 +235,13 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
     if (!self.isConfigured) return;
 
     if (self.usingMultiCam) {
+      NSLog(@"[BeautyCapture] video layout=%@ usingMultiCam=%d realtime=1 beautyEnabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
+            self.currentLayout ?: @"unknown",
+            self.usingMultiCam,
+            self.frontBeautyEnabled,
+            self.frontBeautySmooth,
+            self.frontBeautyBrighten,
+            self.frontBeautyWhiten);
       if (!self.frontVideoDataOutput || !self.backVideoDataOutput) {
         [self emitRecordingError:@"Realtime recording unavailable — video data outputs are not configured."];
         return;
@@ -249,6 +264,12 @@ static id DualCameraBufferAttachment(CVBufferRef buffer, CFStringRef key) {
       });
     } else {
       // Single-cam
+      NSLog(@"[BeautyCapture] video layout=%@ usingMultiCam=0 realtime=0 beautyEnabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
+            self.currentLayout ?: @"unknown",
+            self.frontBeautyEnabled,
+            self.frontBeautySmooth,
+            self.frontBeautyBrighten,
+            self.frontBeautyWhiten);
       self.canvasSizeAtRecording = canvasSizeForRecording;
       AVCaptureMovieFileOutput *output = [self movieOutputForCurrentLayout];
       if (!output) {

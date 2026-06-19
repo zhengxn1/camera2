@@ -8,9 +8,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly) BOOL available;
 @property (nonatomic, assign) BOOL enabled;
 @property (nonatomic, assign) CGFloat smooth;
-@property (nonatomic, assign) CGFloat brighten;
-@property (nonatomic, assign) CGFloat tone;
-@property (nonatomic, assign) CGFloat sharpness;
+@property (nonatomic, assign) CGFloat whiten;
 
 - (instancetype)initWithCIContext:(CIContext *)ciContext NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;

@@ -3,32 +3,26 @@ import { Pressable, Text, View } from 'react-native';
 import { styles } from '../styles';
 import { clamp } from '../utils';
 
-export type BeautyKey = 'natural' | 'smooth' | 'brighten' | 'tone' | 'sharpness';
+export type BeautyKey = 'smooth' | 'brighten' | 'whiten';
 
 export interface BeautySettings {
-  natural: number;
   smooth: number;
   brighten: number;
-  tone: number;
-  sharpness: number;
+  whiten: number;
 }
 
 export const DEFAULT_BEAUTY_SETTINGS: BeautySettings = {
-  natural: 0,
   smooth: 0,
   brighten: 0,
-  tone: 0,
-  sharpness: 0,
+  whiten: 0,
 };
 
 const BEAUTY_VALUE_STEP = 2;
 
 const BEAUTY_ITEMS: Array<{ key: BeautyKey; label: string }> = [
-  { key: 'natural', label: '自然' },
   { key: 'smooth', label: '磨皮' },
   { key: 'brighten', label: '提亮' },
-  { key: 'tone', label: '肤色' },
-  { key: 'sharpness', label: '清晰' },
+  { key: 'whiten', label: '美白' },
 ];
 
 interface BeautyPanelProps {
@@ -46,15 +40,6 @@ function valueForKey(settings: BeautySettings, key: BeautyKey): number {
 
 function nextSettingsForKey(settings: BeautySettings, key: BeautyKey, value: number): BeautySettings {
   const next = Math.round(clamp(value, 0, 100) / BEAUTY_VALUE_STEP) * BEAUTY_VALUE_STEP;
-  if (key === 'natural') {
-    return {
-      natural: next,
-      smooth: next,
-      brighten: Math.round(next * 0.3),
-      tone: Math.round(next * 0.3),
-      sharpness: 0,
-    };
-  }
   return { ...settings, [key]: next };
 }
 

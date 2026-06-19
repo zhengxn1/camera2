@@ -141,7 +141,8 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
       warmupImage = [self compositedImageForLayoutState:warmupState
                                                   front:frontFrame
                                                    back:backFrame
-                                            highQuality:YES];
+                                            highQuality:YES
+                                                 source:@"warmup"];
     }
     if (!warmupImage) {
       warmupImage = [self blackCanvasSize:outputSize];
@@ -406,7 +407,8 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
   CIImage *composited = [self compositedImageForLayoutState:state
                                                       front:frontFrame
                                                        back:backFrame
-                                                highQuality:YES];
+                                                highQuality:YES
+                                                     source:@"recording"];
   if (!composited) {
     self.realtimeDroppedFrameCount += 1;
     return;

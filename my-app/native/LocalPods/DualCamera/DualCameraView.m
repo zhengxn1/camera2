@@ -71,8 +71,7 @@
   _frontBeautyEnabled = NO;
   _frontBeautySmooth = 0;
   _frontBeautyBrighten = 0;
-  _frontBeautyTone = 0;
-  _frontBeautySharpness = 0;
+  _frontBeautyWhiten = 0;
   _lastFrontBeautyPreviewUpdateTime = 0;
   _frontBeautyPreviewRenderInFlight = NO;
   _gpupixelBeautyAdapter = [[GPUPixelBeautyAdapter alloc] initWithCIContext:_ciContext];
@@ -87,8 +86,7 @@
 - (BOOL)hasActiveFrontBeautyValues {
   return self.frontBeautySmooth > 0 ||
          self.frontBeautyBrighten > 0 ||
-         self.frontBeautyTone > 0 ||
-         self.frontBeautySharpness > 0;
+         self.frontBeautyWhiten > 0;
 }
 
 - (void)hideFrontBeautyPreviewIfInactive {
@@ -159,30 +157,31 @@
 - (void)setFrontBeautyEnabled:(BOOL)enabled {
   _frontBeautyEnabled = enabled;
   self.gpupixelBeautyAdapter.enabled = enabled;
+  NSLog(@"[BeautyNative] enabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
+        enabled, self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten);
   [self hideFrontBeautyPreviewIfInactive];
 }
 
 - (void)setFrontBeautySmooth:(CGFloat)value {
   _frontBeautySmooth = MAX(0, MIN(100, value));
   self.gpupixelBeautyAdapter.smooth = _frontBeautySmooth;
+  NSLog(@"[BeautyNative] smooth=%.1f brighten=%.1f whiten=%.1f enabled=%d",
+        self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten, self.frontBeautyEnabled);
   [self hideFrontBeautyPreviewIfInactive];
 }
 
 - (void)setFrontBeautyBrighten:(CGFloat)value {
   _frontBeautyBrighten = MAX(0, MIN(100, value));
-  self.gpupixelBeautyAdapter.brighten = _frontBeautyBrighten;
+  NSLog(@"[BeautyNative] smooth=%.1f brighten=%.1f whiten=%.1f enabled=%d",
+        self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten, self.frontBeautyEnabled);
   [self hideFrontBeautyPreviewIfInactive];
 }
 
-- (void)setFrontBeautyTone:(CGFloat)value {
-  _frontBeautyTone = MAX(0, MIN(100, value));
-  self.gpupixelBeautyAdapter.tone = _frontBeautyTone;
-  [self hideFrontBeautyPreviewIfInactive];
-}
-
-- (void)setFrontBeautySharpness:(CGFloat)value {
-  _frontBeautySharpness = MAX(0, MIN(100, value));
-  self.gpupixelBeautyAdapter.sharpness = _frontBeautySharpness;
+- (void)setFrontBeautyWhiten:(CGFloat)value {
+  _frontBeautyWhiten = MAX(0, MIN(100, value));
+  self.gpupixelBeautyAdapter.whiten = _frontBeautyWhiten;
+  NSLog(@"[BeautyNative] smooth=%.1f brighten=%.1f whiten=%.1f enabled=%d",
+        self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten, self.frontBeautyEnabled);
   [self hideFrontBeautyPreviewIfInactive];
 }
 

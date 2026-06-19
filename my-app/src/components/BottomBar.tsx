@@ -188,14 +188,15 @@ interface BeautyIconProps {
 
 function BeautyIconImpl({ selected }: BeautyIconProps) {
   const tone = selected ? styles.modeIconSelected : styles.modeIcon;
+  const fill = selected ? styles.modeIconFillSelected : styles.modeIconFill;
 
   return (
-    <View style={styles.beautyIconPortrait}>
-      <View style={[styles.beautyIconHair, tone]} />
-      <View style={[styles.beautyIconFaceLine, tone]} />
-      <View style={[styles.beautyIconEye, tone]} />
-      <View style={[styles.beautyIconMouth, tone]} />
-      <View style={[styles.beautyIconNeck, tone]} />
+    <View style={styles.beautyIconMagic}>
+      <View style={[styles.beautyIconStarLarge, tone]} />
+      <View style={[styles.beautyIconStarSmall, tone]} />
+      <View style={[styles.beautyIconWand, tone]}>
+        <View style={[styles.beautyIconWandTip, fill]} />
+      </View>
     </View>
   );
 }

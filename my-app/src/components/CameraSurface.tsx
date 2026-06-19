@@ -20,8 +20,7 @@ interface CameraSurfaceProps {
   frontBeautyEnabled: boolean;
   frontBeautySmooth: number;
   frontBeautyBrighten: number;
-  frontBeautyTone: number;
-  frontBeautySharpness: number;
+  frontBeautyWhiten: number;
 }
 
 function CameraSurfaceImpl({
@@ -34,8 +33,7 @@ function CameraSurfaceImpl({
   frontBeautyEnabled,
   frontBeautySmooth,
   frontBeautyBrighten,
-  frontBeautyTone,
-  frontBeautySharpness,
+  frontBeautyWhiten,
 }: CameraSurfaceProps) {
   if (!NativeDualCameraView) {
     return (
@@ -63,8 +61,7 @@ function CameraSurfaceImpl({
       frontBeautyEnabled={frontBeautyEnabled}
       frontBeautySmooth={frontBeautySmooth}
       frontBeautyBrighten={frontBeautyBrighten}
-      frontBeautyTone={frontBeautyTone}
-      frontBeautySharpness={frontBeautySharpness}
+      frontBeautyWhiten={frontBeautyWhiten}
     />
   );
 }

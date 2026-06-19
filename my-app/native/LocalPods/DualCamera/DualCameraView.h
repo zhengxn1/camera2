@@ -35,8 +35,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL frontBeautyEnabled;
 @property (nonatomic, assign) CGFloat frontBeautySmooth;
 @property (nonatomic, assign) CGFloat frontBeautyBrighten;
-@property (nonatomic, assign) CGFloat frontBeautyTone;
-@property (nonatomic, assign) CGFloat frontBeautySharpness;
+@property (nonatomic, assign) CGFloat frontBeautyWhiten;
 
 - (void)dc_startSession;
 - (void)dc_stopSession;

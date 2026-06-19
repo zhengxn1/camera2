@@ -70,26 +70,32 @@
 }
 
 - (CIImage *)beautifiedFrontImage:(CIImage *)image {
+  return [self beautifiedFrontImage:image source:@"unknown"];
+}
+
+- (CIImage *)beautifiedFrontImage:(CIImage *)image source:(NSString *)source {
   if (!image || !self.frontBeautyEnabled) return image;
 
   CGFloat smooth = MAX(0, MIN(100, self.frontBeautySmooth)) / 100.0;
   CGFloat brighten = MAX(0, MIN(100, self.frontBeautyBrighten)) / 100.0;
-  CGFloat tone = MAX(0, MIN(100, self.frontBeautyTone)) / 100.0;
-  CGFloat sharpness = MAX(0, MIN(100, self.frontBeautySharpness)) / 100.0;
-  if (smooth <= 0 && brighten <= 0 && tone <= 0 && sharpness <= 0) return image;
+  CGFloat whiten = MAX(0, MIN(100, self.frontBeautyWhiten)) / 100.0;
+  if (smooth <= 0 && brighten <= 0 && whiten <= 0) return image;
 
+  NSString *pipeline = @"gpupixel";
+  CIImage *result = image;
   CIImage *gpupixelImage = [self.gpupixelBeautyAdapter processFrontImage:image];
   if (gpupixelImage) {
-    return gpupixelImage;
-  }
-  static BOOL didLogGPUPixelFallback = NO;
-  if (!didLogGPUPixelFallback) {
-    didLogGPUPixelFallback = YES;
-    NSLog(@"[DualCamera][GPUPixel] using Core Image beauty fallback");
+    result = gpupixelImage;
+  } else {
+    pipeline = @"coreimage";
+    static BOOL didLogGPUPixelFallback = NO;
+    if (!didLogGPUPixelFallback) {
+      didLogGPUPixelFallback = YES;
+      NSLog(@"[DualCamera][GPUPixel] using Core Image beauty fallback");
+    }
   }
 
-  CIImage *result = image;
-  if (smooth > 0) {
+  if ([pipeline isEqualToString:@"coreimage"] && smooth > 0) {
     CIFilter *noise = [CIFilter filterWithName:@"CINoiseReduction"];
     [noise setValue:result forKey:kCIInputImageKey];
     [noise setValue:@(0.006 + smooth * 0.032) forKey:@"inputNoiseLevel"];
@@ -97,20 +103,30 @@
     result = noise.outputImage ?: result;
   }
 
-  if (brighten > 0 || tone > 0) {
+  if (brighten > 0 || ([pipeline isEqualToString:@"coreimage"] && whiten > 0)) {
     CIFilter *color = [CIFilter filterWithName:@"CIColorControls"];
     [color setValue:result forKey:kCIInputImageKey];
-    [color setValue:@(brighten * 0.08) forKey:kCIInputBrightnessKey];
-    [color setValue:@(1.0 + tone * 0.08) forKey:kCIInputSaturationKey];
-    [color setValue:@(1.0 + brighten * 0.025) forKey:kCIInputContrastKey];
+    [color setValue:@(brighten * 0.10 + ([pipeline isEqualToString:@"coreimage"] ? whiten * 0.045 : 0)) forKey:kCIInputBrightnessKey];
+    [color setValue:@(1.0 + brighten * 0.018) forKey:kCIInputSaturationKey];
+    [color setValue:@(1.0 + brighten * 0.02 + ([pipeline isEqualToString:@"coreimage"] ? whiten * 0.02 : 0)) forKey:kCIInputContrastKey];
     result = color.outputImage ?: result;
   }
 
-  if (sharpness > 0) {
-    CIFilter *sharpen = [CIFilter filterWithName:@"CISharpenLuminance"];
-    [sharpen setValue:result forKey:kCIInputImageKey];
-    [sharpen setValue:@(sharpness * 0.35) forKey:kCIInputSharpnessKey];
-    result = sharpen.outputImage ?: result;
+  static NSMutableSet<NSString *> *loggedSources = nil;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    loggedSources = [NSMutableSet set];
+  });
+  NSString *logKey = source ?: @"unknown";
+  @synchronized(loggedSources) {
+    if (![loggedSources containsObject:logKey]) {
+      [loggedSources addObject:logKey];
+      NSLog(@"[BeautyProcess] source=%@ pipeline=%@ smooth=%.1f brighten=%.1f whiten=%.1f input=%.0fx%.0f output=%.0fx%.0f",
+            logKey, pipeline,
+            self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten,
+            image.extent.size.width, image.extent.size.height,
+            result.extent.size.width, result.extent.size.height);
+    }
   }
 
   return result;
@@ -178,6 +194,18 @@
                                      front:(CIImage *)front
                                       back:(CIImage *)back
                                 highQuality:(BOOL)highQuality {
+  return [self compositedImageForLayoutState:state
+                                       front:front
+                                        back:back
+                                  highQuality:highQuality
+                                       source:@"compose"];
+}
+
+- (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
+                                     front:(CIImage *)front
+                                      back:(CIImage *)back
+                                highQuality:(BOOL)highQuality
+                                     source:(NSString *)source {
   CGSize canvasSize = state.outputSize;
   NSDictionary<NSString *, NSValue *> *rects = [self rectsForLayoutState:state canvasSize:canvasSize];
 
@@ -200,22 +228,24 @@
   BOOL hasActiveBeauty = self.frontBeautyEnabled &&
     (self.frontBeautySmooth > 0 ||
      self.frontBeautyBrighten > 0 ||
-     self.frontBeautyTone > 0 ||
-     self.frontBeautySharpness > 0);
+     self.frontBeautyWhiten > 0);
   BOOL shouldBeautifyFront = hasFrontFrame && hasActiveBeauty && ![layout isEqualToString:@"back"];
-  static BOOL didLogSaveBeautyApplied = NO;
-  static BOOL didLogSaveBeautySkippedBack = NO;
-  if (shouldBeautifyFront) {
-    if (!didLogSaveBeautyApplied) {
-      didLogSaveBeautyApplied = YES;
-      NSLog(@"[DualCamera][BeautySave] applying front beauty layout=%@ front=%d back=%d smooth=%.1f brighten=%.1f tone=%.1f sharpness=%.1f",
-            layout, front != nil, back != nil,
-            self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyTone, self.frontBeautySharpness);
+  static NSMutableSet<NSString *> *loggedComposeSources = nil;
+  static dispatch_once_t composeOnceToken;
+  dispatch_once(&composeOnceToken, ^{
+    loggedComposeSources = [NSMutableSet set];
+  });
+  NSString *composeLogKey = source ?: @"compose";
+  @synchronized(loggedComposeSources) {
+    if (![loggedComposeSources containsObject:composeLogKey]) {
+      [loggedComposeSources addObject:composeLogKey];
+      NSLog(@"[BeautySave] source=%@ layout=%@ front=%d back=%d shouldBeautifyFront=%d enabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
+            composeLogKey, layout, front != nil, back != nil, shouldBeautifyFront, self.frontBeautyEnabled,
+            self.frontBeautySmooth, self.frontBeautyBrighten, self.frontBeautyWhiten);
     }
-    front = [self beautifiedFrontImage:front];
-  } else if ([layout isEqualToString:@"back"] && hasActiveBeauty && !didLogSaveBeautySkippedBack) {
-    didLogSaveBeautySkippedBack = YES;
-    NSLog(@"[DualCamera][BeautySave] skipped beauty for back layout front=%d back=%d", front != nil, back != nil);
+  }
+  if (shouldBeautifyFront) {
+    front = [self beautifiedFrontImage:front source:composeLogKey];
   }
 
   CIImage *result = [self blackCanvasSize:canvasSize];

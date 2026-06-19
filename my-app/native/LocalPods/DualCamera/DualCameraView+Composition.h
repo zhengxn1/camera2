@@ -23,6 +23,7 @@
 - (CIImage *)scaledCIImage:(CIImage *)image toSize:(CGSize)size highQuality:(BOOL)highQuality;
 - (CIImage *)circleAlphaMaskForRect:(CGRect)rect canvasSize:(CGSize)canvasSize;
 - (CIImage *)beautifiedFrontImage:(CIImage *)image;
+- (CIImage *)beautifiedFrontImage:(CIImage *)image source:(NSString *)source;
 
 /// Scale-to-fill + optional horizontal mirror, placed inside targetRect on a canvasSize canvas.
 - (CIImage *)preparedCameraImage:(CIImage *)image
@@ -49,6 +50,12 @@
                                      front:(CIImage *)front
                                       back:(CIImage *)back
                                 highQuality:(BOOL)highQuality;
+
+- (CIImage *)compositedImageForLayoutState:(DualCameraLayoutState *)state
+                                     front:(CIImage *)front
+                                      back:(CIImage *)back
+                                highQuality:(BOOL)highQuality
+                                     source:(NSString *)source;
 
 // ---------------------------------------------------------------------------
 // File / size utilities

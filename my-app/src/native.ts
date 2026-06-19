@@ -19,8 +19,7 @@ export interface NativeDualCameraViewProps extends ViewProps {
   frontBeautyEnabled: boolean;
   frontBeautySmooth: number;
   frontBeautyBrighten: number;
-  frontBeautyTone: number;
-  frontBeautySharpness: number;
+  frontBeautyWhiten: number;
 }
 
 export interface DualCameraModuleSpec {

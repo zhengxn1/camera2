@@ -53,12 +53,8 @@ RCT_CUSTOM_VIEW_PROPERTY(frontBeautyBrighten, CGFloat, DualCameraView) {
   view.frontBeautyBrighten = json ? [RCTConvert CGFloat:json] : 0;
 }
 
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautyTone, CGFloat, DualCameraView) {
-  view.frontBeautyTone = json ? [RCTConvert CGFloat:json] : 0;
-}
-
-RCT_CUSTOM_VIEW_PROPERTY(frontBeautySharpness, CGFloat, DualCameraView) {
-  view.frontBeautySharpness = json ? [RCTConvert CGFloat:json] : 0;
+RCT_CUSTOM_VIEW_PROPERTY(frontBeautyWhiten, CGFloat, DualCameraView) {
+  view.frontBeautyWhiten = json ? [RCTConvert CGFloat:json] : 0;
 }
 
 @end
