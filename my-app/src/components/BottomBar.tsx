@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import {
   type CameraMode,
   type CaptureMode,
@@ -7,6 +7,8 @@ import {
   type ModeIconName,
 } from '../constants';
 import { styles } from '../styles';
+
+const shutterRingSoft = require('../../assets/shutter-ring-soft.png');
 
 interface BottomBarProps {
   cameraMode: CameraMode;
@@ -56,6 +58,22 @@ function BottomBarImpl({
 
   return (
     <>
+      <View style={styles.topBar} pointerEvents="box-none">
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="打开设置"
+          disabled={settingsDisabled}
+          style={[
+            styles.settingsButton,
+            settingsActive && styles.settingsButtonActive,
+            settingsDisabled && styles.disabledControl,
+          ]}
+          onPress={onSettingsOpen}
+        >
+          <Text style={styles.settingsIcon}>...</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.rightPanel} pointerEvents="box-none">
         {MODE_OPTIONS.map(item => (
           <ModeButton
@@ -86,22 +104,6 @@ function BottomBarImpl({
             美颜
           </Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="打开设置"
-          disabled={settingsDisabled}
-          style={[
-            styles.modeButton,
-            settingsActive && styles.modeButtonSelected,
-            settingsDisabled && styles.disabledControl,
-          ]}
-          onPress={onSettingsOpen}
-        >
-          <SettingsIcon selected={settingsActive} />
-          <Text style={[styles.modeButtonLabel, settingsActive && styles.modeButtonLabelSelected]}>
-            设置
-          </Text>
-        </Pressable>
       </View>
 
       <View style={styles.bottomBar} pointerEvents="box-none">
@@ -129,20 +131,23 @@ function BottomBarImpl({
           ]}
           onPress={onShutterPress}
         >
-          {videoLocked ? (
-            <View style={styles.videoLockBadge}>
-              <View style={styles.videoLockShackle} />
-              <View style={styles.videoLockBody} />
-            </View>
-          ) : (
-            <View
-              style={[
-                styles.shutterInner,
-                videoReady && !recording && !recordingStarting && styles.shutterInnerVideoReady,
-                (recording || recordingStarting) && styles.shutterInnerRecording,
-              ]}
-            />
-          )}
+          <Image source={shutterRingSoft} style={styles.shutterRingImage} />
+          <View style={styles.shutterCore}>
+            {videoLocked ? (
+              <View style={styles.videoLockBadge}>
+                <View style={styles.videoLockShackle} />
+                <View style={styles.videoLockBody} />
+              </View>
+            ) : (
+              <View
+                style={[
+                  styles.shutterInner,
+                  videoReady && !recording && !recordingStarting && styles.shutterInnerVideoReady,
+                  (recording || recordingStarting) && styles.shutterInnerRecording,
+                ]}
+              />
+            )}
+          </View>
         </Pressable>
 
         <Pressable
@@ -190,10 +195,10 @@ const ModeButton = memo(ModeButtonImpl);
 ModeButton.displayName = 'ModeButton';
 
 function labelForModeIcon(icon: ModeIconName): string {
-  if (icon === 'pipSquare') return '画中画方形';
-  if (icon === 'pipCircle') return '画中画圆形';
-  if (icon === 'lr') return '左右布局';
-  if (icon === 'sx') return '上下布局';
+  if (icon === 'pipSquare') return '方形';
+  if (icon === 'pipCircle') return '圆形';
+  if (icon === 'lr') return '左右';
+  if (icon === 'sx') return '上下';
   return '相机';
 }
 
@@ -242,32 +247,6 @@ function BeautyIconImpl({ selected }: BeautyIconProps) {
 
 const BeautyIcon = memo(BeautyIconImpl);
 BeautyIcon.displayName = 'BeautyIcon';
-
-interface SettingsIconProps {
-  selected: boolean;
-}
-
-function SettingsIconImpl({ selected }: SettingsIconProps) {
-  const tone = selected ? styles.modeIconSelected : styles.modeIcon;
-  const fill = selected ? styles.modeIconFillSelected : styles.modeIconFill;
-
-  return (
-    <View style={styles.settingsRailIcon}>
-      <View style={[styles.settingsRailSlider, tone]}>
-        <View style={[styles.settingsRailKnobLeft, fill]} />
-      </View>
-      <View style={[styles.settingsRailSlider, tone]}>
-        <View style={[styles.settingsRailKnobRight, fill]} />
-      </View>
-      <View style={[styles.settingsRailSlider, tone]}>
-        <View style={[styles.settingsRailKnobCenter, fill]} />
-      </View>
-    </View>
-  );
-}
-
-const SettingsIcon = memo(SettingsIconImpl);
-SettingsIcon.displayName = 'SettingsIcon';
 
 interface ModeIconProps {
   name: ModeIconName;

@@ -390,7 +390,7 @@
 
 - (NSString *)saveCIImageAsJPEG:(CIImage *)ciImage {
   NSString *path = [NSTemporaryDirectory() stringByAppendingPathComponent:
-    [NSString stringWithFormat:@"dual_composited_%ld.jpg", (long)[[NSDate date] timeIntervalSince1970]]];
+    [NSString stringWithFormat:@"dual_composited_%@.jpg", [NSUUID UUID].UUIDString]];
 
   CIImage *toSave = ciImage;
   if (ciImage.extent.origin.x != 0 || ciImage.extent.origin.y != 0) {
@@ -398,6 +398,7 @@
     CGFloat oy = -ciImage.extent.origin.y;
     toSave = [ciImage imageByApplyingTransform:CGAffineTransformMakeTranslation(ox, oy)];
   }
+  toSave = [toSave imageBySettingProperties:@{(NSString *)kCGImagePropertyOrientation: @(1)}];
 
   // Use CIContext's native JPEG writer — one-step conversion with explicit sRGB
   // output colour space.  Avoids the CIImage→CGImage→UIImage→JPEG chain whose
@@ -408,7 +409,8 @@
   BOOL ok = [self.ciContext writeJPEGRepresentationOfImage:toSave
                                                     toURL:fileURL
                                                colorSpace:srgb
-                                                  options:@{(id)kCGImageDestinationLossyCompressionQuality: @0.95}
+                                                  options:@{(id)kCGImageDestinationLossyCompressionQuality: @0.95,
+                                                            (id)kCGImagePropertyOrientation: @(1)}
                                                     error:&writeError];
   CGColorSpaceRelease(srgb);
 

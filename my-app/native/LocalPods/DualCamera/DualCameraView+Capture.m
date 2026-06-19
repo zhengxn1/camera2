@@ -42,6 +42,92 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
   return orientation;
 }
 
+static NSString *DualCameraCaptureVideoOrientationString(AVCaptureVideoOrientation orientation) {
+  switch (orientation) {
+    case AVCaptureVideoOrientationPortrait:
+      return @"portrait";
+    case AVCaptureVideoOrientationPortraitUpsideDown:
+      return @"portraitUpsideDown";
+    case AVCaptureVideoOrientationLandscapeRight:
+      return @"landscapeRight";
+    case AVCaptureVideoOrientationLandscapeLeft:
+      return @"landscapeLeft";
+  }
+  return @"unknown";
+}
+
+static NSString *DualCameraImagePropertyOrientationString(CGImagePropertyOrientation orientation) {
+  switch (orientation) {
+    case kCGImagePropertyOrientationUp:
+      return @"up";
+    case kCGImagePropertyOrientationUpMirrored:
+      return @"upMirrored";
+    case kCGImagePropertyOrientationDown:
+      return @"down";
+    case kCGImagePropertyOrientationDownMirrored:
+      return @"downMirrored";
+    case kCGImagePropertyOrientationLeftMirrored:
+      return @"leftMirrored";
+    case kCGImagePropertyOrientationRight:
+      return @"right";
+    case kCGImagePropertyOrientationRightMirrored:
+      return @"rightMirrored";
+    case kCGImagePropertyOrientationLeft:
+      return @"left";
+  }
+  return @"unknown";
+}
+
+static CGSize DualCameraPixelSizeFromPhotoData(NSData *data) {
+  if (!data) return CGSizeZero;
+  CGImageSourceRef source = CGImageSourceCreateWithData((__bridge CFDataRef)data, NULL);
+  if (!source) return CGSizeZero;
+  NSDictionary *properties = (__bridge_transfer NSDictionary *)CGImageSourceCopyPropertiesAtIndex(source, 0, NULL);
+  CFRelease(source);
+  NSNumber *width = properties[(NSString *)kCGImagePropertyPixelWidth];
+  NSNumber *height = properties[(NSString *)kCGImagePropertyPixelHeight];
+  return CGSizeMake(width.doubleValue, height.doubleValue);
+}
+
+static NSString *DualCameraPhotoTraceLogPath(void) {
+  NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
+  NSString *documentsPath = paths.firstObject;
+  if (!documentsPath) return nil;
+  return [documentsPath stringByAppendingPathComponent:@"dual_camera_photo_trace.log"];
+}
+
+static void DualCameraPhotoTraceLog(NSString *format, ...) {
+  if (!format) return;
+  va_list args;
+  va_start(args, format);
+  NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
+  va_end(args);
+  NSLog(@"%@", message);
+
+  NSString *path = DualCameraPhotoTraceLogPath();
+  if (!path) return;
+  NSString *line = [NSString stringWithFormat:@"%@ %@\n", [NSDate date], message ?: @""];
+  NSData *data = [line dataUsingEncoding:NSUTF8StringEncoding];
+  if (!data) return;
+
+  @synchronized([DualCameraView class]) {
+    NSFileManager *fileManager = NSFileManager.defaultManager;
+    if (![fileManager fileExistsAtPath:path]) {
+      [data writeToFile:path atomically:YES];
+      return;
+    }
+    NSFileHandle *handle = [NSFileHandle fileHandleForWritingAtPath:path];
+    if (!handle) return;
+    @try {
+      [handle seekToEndOfFile];
+      [handle writeData:data];
+    } @catch (__unused NSException *exception) {
+    } @finally {
+      [handle closeFile];
+    }
+  }
+}
+
 @implementation DualCameraView (Capture)
 
 #pragma mark - Entry points
@@ -60,14 +146,15 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
       BOOL useWysiwygFrames = self.usingMultiCam &&
         (!isDualPhotoLayout &&
          ([self.currentLayout isEqualToString:@"front"] && self.frontBeautyEnabled));
-      NSLog(@"[BeautyCapture] photo layout=%@ usingMultiCam=%d useWysiwygFrames=%d beautyEnabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
-            self.currentLayout ?: @"unknown",
-            self.usingMultiCam,
-            useWysiwygFrames,
-            self.frontBeautyEnabled,
-            self.frontBeautySmooth,
-            self.frontBeautyBrighten,
-            self.frontBeautyWhiten);
+      DualCameraPhotoTraceLog(@"[BeautyCapture] photo layout=%@ usingMultiCam=%d useWysiwygFrames=%d beautyEnabled=%d smooth=%.1f brighten=%.1f whiten=%.1f",
+                              self.currentLayout ?: @"unknown",
+                              self.usingMultiCam,
+                              useWysiwygFrames,
+                              self.frontBeautyEnabled,
+                              self.frontBeautySmooth,
+                              self.frontBeautyBrighten,
+                              self.frontBeautyWhiten);
+      [self logPhotoOutputConnectionsForReason:@"before_capture"];
       if (isDualPhotoLayout) {
         [self startHighQualityDualPhotoCaptureWithCanvasSize:canvasSizeForPhoto];
       } else if (useWysiwygFrames) {
@@ -94,6 +181,47 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
       }
     }
   });
+}
+
+- (void)logPhotoOutputConnectionsForReason:(NSString *)reason {
+  void (^logOutput)(NSString *, AVCapturePhotoOutput *) = ^(NSString *label, AVCapturePhotoOutput *output) {
+    if (!output) {
+      DualCameraPhotoTraceLog(@"[PhotoTrace] reason=%@ output=%@ missing=1", reason ?: @"unknown", label ?: @"unknown");
+      return;
+    }
+    NSInteger index = 0;
+    for (AVCaptureConnection *connection in output.connections) {
+      NSString *orientation = connection.isVideoOrientationSupported
+        ? DualCameraCaptureVideoOrientationString(connection.videoOrientation)
+        : @"unsupported";
+      NSString *mirrored = connection.isVideoMirroringSupported
+        ? (connection.isVideoMirrored ? @"1" : @"0")
+        : @"unsupported";
+      DualCameraPhotoTraceLog(@"[PhotoTrace] reason=%@ output=%@ connection=%ld orientation=%@ mirrored=%@ active=%d enabled=%d",
+                              reason ?: @"unknown",
+                              label ?: @"unknown",
+                              (long)index,
+                              orientation,
+                              mirrored,
+                              connection.active,
+                              connection.enabled);
+      index += 1;
+    }
+    if (index == 0) {
+      DualCameraPhotoTraceLog(@"[PhotoTrace] reason=%@ output=%@ connections=0", reason ?: @"unknown", label ?: @"unknown");
+    }
+  };
+  DualCameraPhotoTraceLog(@"[PhotoTrace] reason=%@ deviceOrientation=%ld captureOrientation=%@ layout=%@ usingMultiCam=%d saveFormat=%@ aspect=%@",
+                          reason ?: @"unknown",
+                          (long)self.deviceOrientation,
+                          DualCameraCaptureVideoOrientationString([self currentCaptureVideoOrientation]),
+                          self.currentLayout ?: @"unknown",
+                          self.usingMultiCam,
+                          self.saveFormat ?: @"merged",
+                          self.saveAspectRatio ?: @"9:16");
+  logOutput(@"frontPhotoOutput", self.frontPhotoOutput);
+  logOutput(@"backPhotoOutput", self.backPhotoOutput);
+  logOutput(@"singlePhotoOutput", self.singlePhotoOutput);
 }
 
 #pragma mark - Realtime beauty preview
@@ -317,9 +445,36 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
                                                     highQuality:YES
                                                          source:@"photo"];
       NSString *path = [self saveCIImageAsJPEG:composited];
+      NSString *frontPath = nil;
+      NSString *backPath = nil;
+      if ([self.saveFormat isEqualToString:@"segments"] && isDual) {
+        CIImage *frontSegmentFrame = [self beautifiedImage:frontFrame
+                                              cameraSource:@"front"
+                                                     usage:@"photo_segment"];
+        frontPath = [self saveSingleCameraPhotoImage:frontSegmentFrame
+                                        cameraSource:@"front"
+                                          outputSize:photoState.outputSize
+                                            mirrored:self.frontPreviewMirrored
+                                         highQuality:YES];
+        backPath = [self saveSingleCameraPhotoImage:backFrame
+                                       cameraSource:@"back"
+                                         outputSize:photoState.outputSize
+                                           mirrored:self.backPreviewMirrored
+                                        highQuality:YES];
+      }
       dispatch_async(dispatch_get_main_queue(), ^{
         if (path) {
-          [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
+          NSString *combinedURI = [NSString stringWithFormat:@"file://%@", path];
+          if (frontPath || backPath) {
+            NSMutableDictionary *uris = [NSMutableDictionary dictionaryWithObject:combinedURI forKey:@"combined"];
+            if (frontPath) uris[@"front"] = [NSString stringWithFormat:@"file://%@", frontPath];
+            if (backPath) uris[@"back"] = [NSString stringWithFormat:@"file://%@", backPath];
+            NSLog(@"[PhotoSegment] source=videoFrame combined=%d front=%d back=%d",
+                  combinedURI.length > 0, frontPath != nil, backPath != nil);
+            [self emitPhotoSaved:combinedURI uris:uris];
+          } else {
+            [self emitPhotoSaved:combinedURI];
+          }
         } else {
           [self emitError:@"Failed to save photo"];
         }
@@ -414,22 +569,69 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
 
   CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
   NSDictionary *options = srgb ? @{(id)kCIImageColorSpace: (__bridge id)srgb} : nil;
+  CGSize encodedSize = DualCameraPixelSizeFromPhotoData(data);
   CIImage *image = [CIImage imageWithData:data options:options];
   if (srgb) CGColorSpaceRelease(srgb);
   if (!image) return nil;
 
   CGImagePropertyOrientation orientation = DualCameraCGImageOrientationFromPhotoData(data);
+  CGRect beforeExtent = image.extent;
   image = [image imageByApplyingCGOrientation:orientation];
   if (image.extent.origin.x != 0 || image.extent.origin.y != 0) {
     image = [image imageByApplyingTransform:CGAffineTransformMakeTranslation(-image.extent.origin.x,
                                                                              -image.extent.origin.y)];
   }
-  NSLog(@"[PhotoQuality] output=%@ source=photoOutput size=%.0fx%.0f orientation=%u",
-        cameraSource ?: @"unknown",
-        image.extent.size.width,
-        image.extent.size.height,
-        orientation);
+  DualCameraPhotoTraceLog(@"[PhotoQuality] output=%@ source=photoOutput size=%.0fx%.0f orientation=%u",
+                          cameraSource ?: @"unknown",
+                          image.extent.size.width,
+                          image.extent.size.height,
+                          orientation);
+  DualCameraPhotoTraceLog(@"[PhotoOrientation] stage=decode cameraSource=%@ correction=apply_exif_pixel_rotation exif=%u exifName=%@ encoded=%.0fx%.0f beforeCI=%.0fx%.0f afterCI=%.0fx%.0f",
+                          cameraSource ?: @"unknown",
+                          orientation,
+                          DualCameraImagePropertyOrientationString(orientation),
+                          encodedSize.width,
+                          encodedSize.height,
+                          beforeExtent.size.width,
+                          beforeExtent.size.height,
+                          image.extent.size.width,
+                          image.extent.size.height);
   return image;
+}
+
+- (CIImage *)photoImage:(CIImage *)image
+  alignedForOutputSize:(CGSize)outputSize
+          cameraSource:(NSString *)cameraSource {
+  if (!image) return nil;
+  CIImage *result = image;
+  if (result.extent.origin.x != 0 || result.extent.origin.y != 0) {
+    result = [result imageByApplyingTransform:CGAffineTransformMakeTranslation(-result.extent.origin.x,
+                                                                               -result.extent.origin.y)];
+  }
+  DualCameraPhotoTraceLog(@"[PhotoOrientation] stage=export cameraSource=%@ correction=none source=%.0fx%.0f target=%.0fx%.0f",
+                          cameraSource ?: @"unknown",
+                          result.extent.size.width,
+                          result.extent.size.height,
+                          outputSize.width,
+                          outputSize.height);
+  return result;
+}
+
+- (NSString *)saveSingleCameraPhotoImage:(CIImage *)image
+                            cameraSource:(NSString *)cameraSource
+                              outputSize:(CGSize)outputSize
+                                mirrored:(BOOL)mirrored
+                             highQuality:(BOOL)highQuality {
+  if (!image || outputSize.width <= 0 || outputSize.height <= 0) return nil;
+  CIImage *aligned = [self photoImage:image alignedForOutputSize:outputSize cameraSource:cameraSource];
+  CGRect fullRect = CGRectMake(0, 0, outputSize.width, outputSize.height);
+  CIImage *prepared = [self preparedCameraImage:aligned
+                                     targetRect:fullRect
+                                     canvasSize:outputSize
+                                       mirrored:mirrored
+                                    highQuality:highQuality];
+  if (!prepared) return nil;
+  return [self saveCIImageAsJPEG:prepared];
 }
 
 - (void)finishHighQualityDualPhotoCaptureIfReady {
@@ -472,9 +674,36 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
                                                     highQuality:YES
                                                          source:@"photo"];
       NSString *path = [self saveCIImageAsJPEG:composited];
+      NSString *frontPath = nil;
+      NSString *backPath = nil;
+      if ([self.saveFormat isEqualToString:@"segments"]) {
+        CIImage *frontSegmentPhoto = [self beautifiedImage:frontPhoto
+                                              cameraSource:@"front"
+                                                     usage:@"photo_segment"];
+        frontPath = [self saveSingleCameraPhotoImage:frontSegmentPhoto
+                                        cameraSource:@"front"
+                                          outputSize:photoState.outputSize
+                                            mirrored:self.frontPreviewMirrored
+                                         highQuality:YES];
+        backPath = [self saveSingleCameraPhotoImage:backPhoto
+                                       cameraSource:@"back"
+                                         outputSize:photoState.outputSize
+                                           mirrored:self.backPreviewMirrored
+                                        highQuality:YES];
+      }
       dispatch_async(dispatch_get_main_queue(), ^{
         if (path) {
-          [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
+          NSString *combinedURI = [NSString stringWithFormat:@"file://%@", path];
+          if (frontPath || backPath) {
+            NSMutableDictionary *uris = [NSMutableDictionary dictionaryWithObject:combinedURI forKey:@"combined"];
+            if (frontPath) uris[@"front"] = [NSString stringWithFormat:@"file://%@", frontPath];
+            if (backPath) uris[@"back"] = [NSString stringWithFormat:@"file://%@", backPath];
+            NSLog(@"[PhotoSegment] source=photoOutput combined=%d front=%d back=%d",
+                  combinedURI.length > 0, frontPath != nil, backPath != nil);
+            [self emitPhotoSaved:combinedURI uris:uris];
+          } else {
+            [self emitPhotoSaved:combinedURI];
+          }
         } else {
           [self emitError:@"Failed to save photo"];
         }
@@ -677,19 +906,30 @@ static CGImagePropertyOrientation DualCameraCGImageOrientationFromPhotoData(NSDa
       return;
     }
 
+    NSString *cameraSource = @"single";
+    if (output == self.frontPhotoOutput ||
+        (output == self.singlePhotoOutput && self.singleCameraPosition == AVCaptureDevicePositionFront)) {
+      cameraSource = @"front";
+    } else if (output == self.backPhotoOutput ||
+               (output == self.singlePhotoOutput && self.singleCameraPosition == AVCaptureDevicePositionBack)) {
+      cameraSource = @"back";
+    }
+
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
       @autoreleasepool {
         @try {
-          NSString *documentsPath = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
-          NSString *filename = [NSString stringWithFormat:@"photo_%@.jpg", @((NSInteger)[[NSDate date] timeIntervalSince1970])];
-          NSString *path = [documentsPath stringByAppendingPathComponent:filename];
-          NSError *writeError = nil;
-          [data writeToFile:path options:NSDataWritingAtomic error:&writeError];
+          CIImage *normalizedImage = [self ciImageFromPhotoData:data cameraSource:cameraSource];
+          CGSize targetSize = normalizedImage ? normalizedImage.extent.size : CGSizeZero;
+          normalizedImage = [self photoImage:normalizedImage alignedForOutputSize:targetSize cameraSource:cameraSource];
+          NSString *path = normalizedImage ? [self saveCIImageAsJPEG:normalizedImage] : nil;
           dispatch_async(dispatch_get_main_queue(), ^{
-            if (writeError) {
-              [self emitError:writeError.localizedDescription];
-            } else {
+            if (path) {
+              NSLog(@"[PhotoQuality] output=single source=photoOutput_normalized cameraSource=%@ path=%@",
+                    cameraSource ?: @"unknown",
+                    path.lastPathComponent ?: @"unknown");
               [self emitPhotoSaved:[NSString stringWithFormat:@"file://%@", path]];
+            } else {
+              [self emitError:@"Failed to normalize and save photo"];
             }
           });
         } @catch (NSException *exception) {

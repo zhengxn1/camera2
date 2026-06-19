@@ -16,6 +16,7 @@ export interface NativeDualCameraViewProps extends ViewProps {
   pipPositionY: number;
   sxBackOnTop: boolean;
   pipMainIsBack: boolean;
+  saveFormat: 'merged' | 'segments';
   frontBeautyEnabled: boolean;
   frontBeautySmooth: number;
   frontBeautyBrighten: number;

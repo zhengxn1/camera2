@@ -64,6 +64,7 @@
   _frontZoomFactor = 1.0;
   _backZoomFactor = 1.0;
   _saveAspectRatio = @"9:16";
+  _saveFormat = @"merged";
   _realtimeRecordingState = DualCameraRealtimeRecordingStateIdle;
   _realtimeOutputSize = CGSizeZero;
   _lastRealtimeVideoPTS = kCMTimeInvalid;
@@ -169,6 +170,14 @@
     dispatch_async(dispatch_get_main_queue(), ^{
       [self updateLayout];
     });
+  }
+}
+
+- (void)setSaveFormat:(NSString *)saveFormat {
+  NSString *nextFormat = [saveFormat isEqualToString:@"segments"] ? @"segments" : @"merged";
+  if (![_saveFormat isEqualToString:nextFormat]) {
+    _saveFormat = [nextFormat copy];
+    NSLog(@"[SaveFormat] native=%@", _saveFormat);
   }
 }
 

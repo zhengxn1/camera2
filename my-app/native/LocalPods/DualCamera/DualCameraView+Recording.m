@@ -74,6 +74,53 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
   };
 }
 
+- (BOOL)configureRealtimeSegmentWriterWithPath:(NSString *)path
+                                 videoSettings:(NSDictionary *)videoSettings
+                                    pixelAttrs:(NSDictionary *)pixelAttrs
+                                 audioSettings:(NSDictionary *)audioSettings
+                                        writer:(AVAssetWriter **)writerOut
+                                    videoInput:(AVAssetWriterInput **)videoInputOut
+                                    audioInput:(AVAssetWriterInput **)audioInputOut
+                                       adaptor:(AVAssetWriterInputPixelBufferAdaptor **)adaptorOut
+                                         label:(NSString *)label {
+  NSURL *url = [NSURL fileURLWithPath:path];
+  [[NSFileManager defaultManager] removeItemAtURL:url error:nil];
+  NSError *error = nil;
+  AVAssetWriter *writer = [[AVAssetWriter alloc] initWithURL:url fileType:AVFileTypeMPEG4 error:&error];
+  if (!writer || error) {
+    [self emitRecordingError:error.localizedDescription ?: [NSString stringWithFormat:@"Failed to create %@ segment writer.", label ?: @"camera"]];
+    return NO;
+  }
+
+  AVAssetWriterInput *videoInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeVideo outputSettings:videoSettings];
+  videoInput.expectsMediaDataInRealTime = YES;
+  videoInput.transform = CGAffineTransformIdentity;
+  if (![writer canAddInput:videoInput]) {
+    [self emitRecordingError:[NSString stringWithFormat:@"%@ segment writer rejected video input.", label ?: @"Camera"]];
+    return NO;
+  }
+  [writer addInput:videoInput];
+
+  AVAssetWriterInputPixelBufferAdaptor *adaptor =
+    [AVAssetWriterInputPixelBufferAdaptor assetWriterInputPixelBufferAdaptorWithAssetWriterInput:videoInput
+                                                                     sourcePixelBufferAttributes:pixelAttrs];
+
+  AVAssetWriterInput *audioInput = [AVAssetWriterInput assetWriterInputWithMediaType:AVMediaTypeAudio outputSettings:audioSettings];
+  audioInput.expectsMediaDataInRealTime = YES;
+  if ([writer canAddInput:audioInput]) {
+    [writer addInput:audioInput];
+  } else {
+    NSLog(@"[RecordingSegment] %@ writer rejected audio input; segment video only", label ?: @"camera");
+    audioInput = nil;
+  }
+
+  if (writerOut) *writerOut = writer;
+  if (videoInputOut) *videoInputOut = videoInput;
+  if (audioInputOut) *audioInputOut = audioInput;
+  if (adaptorOut) *adaptorOut = adaptor;
+  return YES;
+}
+
 - (CIImage *)realtimeOutputAdjustedImage:(CIImage *)image {
   if (!image || DualCameraHDRDebugOutputExposureEV == 0) return image;
   static BOOL didLogOutputAdjustment = NO;
@@ -336,11 +383,63 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
     audioInput = nil;
   }
 
+  BOOL shouldRecordSegments = [self.saveFormat isEqualToString:@"segments"] && [self isDualLayout:self.currentLayout];
+  NSString *frontPath = nil;
+  NSString *backPath = nil;
+  AVAssetWriter *frontWriter = nil;
+  AVAssetWriterInput *frontVideoInput = nil;
+  AVAssetWriterInput *frontAudioInput = nil;
+  AVAssetWriterInputPixelBufferAdaptor *frontAdaptor = nil;
+  AVAssetWriter *backWriter = nil;
+  AVAssetWriterInput *backVideoInput = nil;
+  AVAssetWriterInput *backAudioInput = nil;
+  AVAssetWriterInputPixelBufferAdaptor *backAdaptor = nil;
+  if (shouldRecordSegments) {
+    frontPath = [self documentsPathWithPrefix:@"dual_front_"];
+    backPath = [self documentsPathWithPrefix:@"dual_back_"];
+    BOOL frontOK = [self configureRealtimeSegmentWriterWithPath:frontPath
+                                                  videoSettings:videoSettings
+                                                     pixelAttrs:pixelAttrs
+                                                  audioSettings:audioSettings
+                                                         writer:&frontWriter
+                                                     videoInput:&frontVideoInput
+                                                     audioInput:&frontAudioInput
+                                                        adaptor:&frontAdaptor
+                                                          label:@"front"];
+    BOOL backOK = [self configureRealtimeSegmentWriterWithPath:backPath
+                                                 videoSettings:videoSettings
+                                                    pixelAttrs:pixelAttrs
+                                                 audioSettings:audioSettings
+                                                        writer:&backWriter
+                                                    videoInput:&backVideoInput
+                                                    audioInput:&backAudioInput
+                                                       adaptor:&backAdaptor
+                                                         label:@"back"];
+    if (!frontOK || !backOK) {
+      [writer cancelWriting];
+      [frontWriter cancelWriting];
+      [backWriter cancelWriting];
+      return NO;
+    }
+    NSLog(@"[RecordingSegment] writers=combined,front,back output=%.0fx%.0f saveFormat=%@",
+          outputSize.width, outputSize.height, self.saveFormat ?: @"merged");
+  }
+
   self.realtimeAssetWriter = writer;
   self.realtimeVideoInput = videoInput;
   self.realtimeAudioInput = audioInput;
   self.realtimePixelBufferAdaptor = adaptor;
   self.realtimeRecordingPath = path;
+  self.realtimeFrontAssetWriter = frontWriter;
+  self.realtimeFrontVideoInput = frontVideoInput;
+  self.realtimeFrontAudioInput = frontAudioInput;
+  self.realtimeFrontPixelBufferAdaptor = frontAdaptor;
+  self.realtimeFrontRecordingPath = frontPath;
+  self.realtimeBackAssetWriter = backWriter;
+  self.realtimeBackVideoInput = backVideoInput;
+  self.realtimeBackAudioInput = backAudioInput;
+  self.realtimeBackPixelBufferAdaptor = backAdaptor;
+  self.realtimeBackRecordingPath = backPath;
   self.realtimeRecordingAspectRatio = aspectRatio;
   self.realtimeOutputSize = outputSize;
   self.recordingLayoutState = recordingState;
@@ -377,8 +476,76 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Realtime writer failed to start."];
     return NO;
   }
+  if (self.realtimeFrontAssetWriter && ![self.realtimeFrontAssetWriter startWriting]) {
+    [self failRealtimeRecording:self.realtimeFrontAssetWriter.error.localizedDescription ?: @"Front segment writer failed to start."];
+    return NO;
+  }
+  if (self.realtimeBackAssetWriter && ![self.realtimeBackAssetWriter startWriting]) {
+    [self failRealtimeRecording:self.realtimeBackAssetWriter.error.localizedDescription ?: @"Back segment writer failed to start."];
+    return NO;
+  }
   [self.realtimeAssetWriter startSessionAtSourceTime:time];
+  [self.realtimeFrontAssetWriter startSessionAtSourceTime:time];
+  [self.realtimeBackAssetWriter startSessionAtSourceTime:time];
   self.realtimeWriterStarted = YES;
+  return YES;
+}
+
+- (BOOL)appendRealtimeSegmentImage:(CIImage *)sourceImage
+                             label:(NSString *)label
+                           atTime:(CMTime)time
+                        outputSize:(CGSize)outputSize
+                          mirrored:(BOOL)mirrored
+                            writer:(AVAssetWriter *)writer
+                        videoInput:(AVAssetWriterInput *)videoInput
+                           adaptor:(AVAssetWriterInputPixelBufferAdaptor *)adaptor {
+  if (!writer || !videoInput || !adaptor || !sourceImage) return YES;
+  if (writer.status == AVAssetWriterStatusFailed) {
+    [self failRealtimeRecording:writer.error.localizedDescription ?: [NSString stringWithFormat:@"%@ segment writer failed.", label ?: @"Camera"]];
+    return NO;
+  }
+  if (!videoInput.isReadyForMoreMediaData) {
+    self.realtimeDroppedFrameCount += 1;
+    return YES;
+  }
+
+  CGRect fullRect = CGRectMake(0, 0, outputSize.width, outputSize.height);
+  CIImage *prepared = [self preparedCameraImage:sourceImage
+                                     targetRect:fullRect
+                                     canvasSize:outputSize
+                                       mirrored:mirrored
+                                    highQuality:NO];
+  if (!prepared) {
+    self.realtimeDroppedFrameCount += 1;
+    return YES;
+  }
+
+  CVPixelBufferRef pixelBuffer = NULL;
+  CVPixelBufferPoolRef pool = adaptor.pixelBufferPool;
+  if (!pool || CVPixelBufferPoolCreatePixelBuffer(NULL, pool, &pixelBuffer) != kCVReturnSuccess || !pixelBuffer) {
+    self.realtimeDroppedFrameCount += 1;
+    return YES;
+  }
+
+  CGColorSpaceRef colorSpace = DualCameraCreateRealtimeRenderColorSpace();
+  if (colorSpace) {
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, colorSpace, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+    CVBufferSetAttachment(pixelBuffer, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
+  }
+  [self.ciContext render:prepared
+         toCVPixelBuffer:pixelBuffer
+                  bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
+              colorSpace:colorSpace];
+  if (colorSpace) CGColorSpaceRelease(colorSpace);
+
+  BOOL appended = [adaptor appendPixelBuffer:pixelBuffer withPresentationTime:time];
+  CVPixelBufferRelease(pixelBuffer);
+  if (!appended) {
+    [self failRealtimeRecording:writer.error.localizedDescription ?: [NSString stringWithFormat:@"Failed to append %@ segment frame.", label ?: @"camera"]];
+    return NO;
+  }
   return YES;
 }
 
@@ -517,6 +684,28 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
     self.realtimeDroppedFrameCount += 1;
     [self failRealtimeRecording:self.realtimeAssetWriter.error.localizedDescription ?: @"Failed to append realtime video frame."];
   } else {
+    if (self.realtimeFrontAssetWriter || self.realtimeBackAssetWriter) {
+      BOOL frontSegmentOK = [self appendRealtimeSegmentImage:frontForComposition
+                                                       label:@"front"
+                                                      atTime:time
+                                                  outputSize:outputSize
+                                                    mirrored:self.frontPreviewMirrored
+                                                      writer:self.realtimeFrontAssetWriter
+                                                  videoInput:self.realtimeFrontVideoInput
+                                                     adaptor:self.realtimeFrontPixelBufferAdaptor];
+      BOOL backSegmentOK = [self appendRealtimeSegmentImage:backFrame
+                                                      label:@"back"
+                                                     atTime:time
+                                                 outputSize:outputSize
+                                                   mirrored:self.backPreviewMirrored
+                                                     writer:self.realtimeBackAssetWriter
+                                                 videoInput:self.realtimeBackVideoInput
+                                                    adaptor:self.realtimeBackPixelBufferAdaptor];
+      if (!frontSegmentOK || !backSegmentOK) {
+        CVPixelBufferRelease(pixelBuffer);
+        return;
+      }
+    }
     self.lastRealtimeVideoPTS = time;
     self.hasLastRealtimeVideoPTS = YES;
     self.realtimeWrittenVideoFrameCount += 1;
@@ -558,6 +747,19 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
       }
     }
   }
+  NSArray<AVAssetWriterInput *> *segmentAudioInputs = @[
+    self.realtimeFrontAudioInput ?: (AVAssetWriterInput *)[NSNull null],
+    self.realtimeBackAudioInput ?: (AVAssetWriterInput *)[NSNull null]
+  ];
+  for (id candidate in segmentAudioInputs) {
+    if (![candidate isKindOfClass:[AVAssetWriterInput class]]) continue;
+    AVAssetWriterInput *segmentAudioInput = (AVAssetWriterInput *)candidate;
+    if (segmentAudioInput.isReadyForMoreMediaData) {
+      if (![segmentAudioInput appendSampleBuffer:sampleBuffer]) {
+        self.realtimeDroppedAudioSampleCount += 1;
+      }
+    }
+  }
 }
 
 - (void)finishRealtimeRecording {
@@ -570,6 +772,14 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
   AVAssetWriterInput *videoInput = self.realtimeVideoInput;
   AVAssetWriterInput *audioInput = self.realtimeAudioInput;
   NSString *path = self.realtimeRecordingPath;
+  AVAssetWriter *frontWriter = self.realtimeFrontAssetWriter;
+  AVAssetWriterInput *frontVideoInput = self.realtimeFrontVideoInput;
+  AVAssetWriterInput *frontAudioInput = self.realtimeFrontAudioInput;
+  NSString *frontPath = self.realtimeFrontRecordingPath;
+  AVAssetWriter *backWriter = self.realtimeBackAssetWriter;
+  AVAssetWriterInput *backVideoInput = self.realtimeBackVideoInput;
+  AVAssetWriterInput *backAudioInput = self.realtimeBackAudioInput;
+  NSString *backPath = self.realtimeBackRecordingPath;
   NSInteger dropped = self.realtimeDroppedFrameCount;
   NSInteger audioDropped = self.realtimeDroppedAudioSampleCount;
   NSInteger written = self.realtimeWrittenVideoFrameCount;
@@ -604,21 +814,63 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
   self.realtimeRecordingState = DualCameraRealtimeRecordingStateFinishing;
   [videoInput markAsFinished];
   if (audioInput) [audioInput markAsFinished];
+  if (frontVideoInput) [frontVideoInput markAsFinished];
+  if (frontAudioInput) [frontAudioInput markAsFinished];
+  if (backVideoInput) [backVideoInput markAsFinished];
+  if (backAudioInput) [backAudioInput markAsFinished];
+
+  dispatch_group_t finishGroup = dispatch_group_create();
+  __block BOOL combinedCompleted = NO;
+  __block BOOL frontCompleted = frontWriter == nil;
+  __block BOOL backCompleted = backWriter == nil;
+  __block NSError *finishError = nil;
+
+  dispatch_group_enter(finishGroup);
   [writer finishWritingWithCompletionHandler:^{
-    dispatch_async(dispatch_get_main_queue(), ^{
-      if (writer.status == AVAssetWriterStatusCompleted) {
-        NSLog(@"[DualCamera] Realtime recording finished path=%@ written=%ld dropped=%ld audioDropped=%ld",
-              path, (long)written, (long)dropped, (long)audioDropped);
-        [self resetRealtimeRecordingContext];
-        [self emitRecordingFinished:[NSString stringWithFormat:@"file://%@", path]];
-      } else {
-        NSString *message = writer.error.localizedDescription ?: @"Realtime recording failed.";
-        NSDictionary *details = [self recordingErrorDetailsForError:writer.error context:@"finish_completion_failed" rejectedPTS:kCMTimeInvalid];
-        [self resetRealtimeRecordingContext];
-        [self emitRecordingError:message details:details];
-      }
-    });
+    combinedCompleted = (writer.status == AVAssetWriterStatusCompleted);
+    if (!combinedCompleted) finishError = writer.error;
+    dispatch_group_leave(finishGroup);
   }];
+  if (frontWriter) {
+    dispatch_group_enter(finishGroup);
+    [frontWriter finishWritingWithCompletionHandler:^{
+      frontCompleted = (frontWriter.status == AVAssetWriterStatusCompleted);
+      if (!frontCompleted && !finishError) finishError = frontWriter.error;
+      dispatch_group_leave(finishGroup);
+    }];
+  }
+  if (backWriter) {
+    dispatch_group_enter(finishGroup);
+    [backWriter finishWritingWithCompletionHandler:^{
+      backCompleted = (backWriter.status == AVAssetWriterStatusCompleted);
+      if (!backCompleted && !finishError) finishError = backWriter.error;
+      dispatch_group_leave(finishGroup);
+    }];
+  }
+
+  dispatch_group_notify(finishGroup, dispatch_get_main_queue(), ^{
+    if (combinedCompleted && frontCompleted && backCompleted) {
+      NSLog(@"[DualCamera] Realtime recording finished path=%@ written=%ld dropped=%ld audioDropped=%ld",
+            path, (long)written, (long)dropped, (long)audioDropped);
+      NSString *combinedURI = [NSString stringWithFormat:@"file://%@", path];
+      NSMutableDictionary *uris = [NSMutableDictionary dictionaryWithObject:combinedURI forKey:@"combined"];
+      if (frontPath) uris[@"front"] = [NSString stringWithFormat:@"file://%@", frontPath];
+      if (backPath) uris[@"back"] = [NSString stringWithFormat:@"file://%@", backPath];
+      BOOL hasSegments = frontPath.length > 0 || backPath.length > 0;
+      NSLog(@"[RecordingSegment] finish combined=1 front=%d back=%d", frontPath.length > 0, backPath.length > 0);
+      [self resetRealtimeRecordingContext];
+      if (hasSegments) {
+        [self emitRecordingFinished:combinedURI uris:uris];
+      } else {
+        [self emitRecordingFinished:combinedURI];
+      }
+    } else {
+      NSString *message = finishError.localizedDescription ?: @"Realtime recording failed.";
+      NSDictionary *details = [self recordingErrorDetailsForError:finishError context:@"finish_completion_failed" rejectedPTS:kCMTimeInvalid];
+      [self resetRealtimeRecordingContext];
+      [self emitRecordingError:message details:details];
+    }
+  });
 }
 
 - (void)failRealtimeRecording:(NSString *)message {
@@ -629,6 +881,8 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
   self.realtimeRecordingState = DualCameraRealtimeRecordingStateFailed;
   self.isDualRecordingActive = NO;
   [self.realtimeAssetWriter cancelWriting];
+  [self.realtimeFrontAssetWriter cancelWriting];
+  [self.realtimeBackAssetWriter cancelWriting];
   [self resetRealtimeRecordingContext];
   [self emitRecordingError:message ?: @"Realtime recording failed." details:details];
 }
@@ -639,6 +893,16 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
   self.realtimeAudioInput = nil;
   self.realtimePixelBufferAdaptor = nil;
   self.realtimeRecordingPath = nil;
+  self.realtimeFrontAssetWriter = nil;
+  self.realtimeFrontVideoInput = nil;
+  self.realtimeFrontAudioInput = nil;
+  self.realtimeFrontPixelBufferAdaptor = nil;
+  self.realtimeFrontRecordingPath = nil;
+  self.realtimeBackAssetWriter = nil;
+  self.realtimeBackVideoInput = nil;
+  self.realtimeBackAudioInput = nil;
+  self.realtimeBackPixelBufferAdaptor = nil;
+  self.realtimeBackRecordingPath = nil;
   self.realtimeRecordingAspectRatio = nil;
   self.realtimeOutputSize = CGSizeZero;
   self.recordingLayoutState = nil;
@@ -662,6 +926,10 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
 
 - (void)emitRecordingFinished:(NSString *)uri {
   [[DualCameraEventEmitter shared] sendRecordingFinished:uri];
+}
+
+- (void)emitRecordingFinished:(NSString *)uri uris:(NSDictionary *)uris {
+  [[DualCameraEventEmitter shared] sendRecordingFinished:uri uris:uris];
 }
 
 - (void)emitRecordingStarted {

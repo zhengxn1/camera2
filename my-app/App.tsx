@@ -33,7 +33,7 @@ import { MediaPermissionBanner } from './src/components/MediaPermissionBanner';
 import { PermissionGate } from './src/components/PermissionGate';
 import { RecordingIndicator } from './src/components/RecordingIndicator';
 import { SavingOverlay } from './src/components/SavingOverlay';
-import { SettingsPopup } from './src/components/SettingsPopup';
+import { SettingsPopup, type SaveFormat } from './src/components/SettingsPopup';
 import { VideoUnlockSheet } from './src/components/VideoUnlockSheet';
 
 export default function App() {
@@ -41,9 +41,10 @@ export default function App() {
   const media = useMediaPermission();
   const screen = useScreenSize();
   const { audioLevel, pipPosition, pipSize, resetPip } = useDualCameraView();
-  const session = useDualCameraSession({ ensureMedia: media.ensure });
   const videoUnlock = useVideoUnlock();
   const [aspect, setAspect] = useAspectRatio();
+  const [saveFormat, setSaveFormat] = useState<SaveFormat>('merged');
+  const session = useDualCameraSession({ ensureMedia: media.ensure, saveFormat });
 
   const [cameraMode, setCameraMode] = useState<CameraMode>(CAMERA_MODE.SX);
   const [captureMode, setCaptureMode] = useState<CaptureMode>('picture');
@@ -177,6 +178,7 @@ export default function App() {
         pipSize={pipSize}
         pipPosition={pipPosition}
         isFlipped={isFlipped}
+        saveFormat={saveFormat}
         frontBeautyEnabled={beautyActive}
         frontBeautySmooth={beautySettings.smooth}
         frontBeautyBrighten={beautySettings.brighten}
@@ -210,6 +212,8 @@ export default function App() {
         onClose={closeMenu}
         aspectRatio={aspect}
         onAspectChange={setAspect}
+        saveFormat={saveFormat}
+        onSaveFormatChange={setSaveFormat}
         disabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
       />
 

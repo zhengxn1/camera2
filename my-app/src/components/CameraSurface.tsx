@@ -6,6 +6,7 @@ import {
   type CameraMode,
   LAYOUT_MAP,
 } from '../constants';
+import type { SaveFormat } from '../hooks/useDualCameraSession';
 import { NativeDualCameraView } from '../native';
 import { styles } from '../styles';
 import type { PipPosition } from './CameraControlsOverlay';
@@ -17,6 +18,7 @@ interface CameraSurfaceProps {
   pipSize: number;
   pipPosition: PipPosition;
   isFlipped: boolean;
+  saveFormat: SaveFormat;
   frontBeautyEnabled: boolean;
   frontBeautySmooth: number;
   frontBeautyBrighten: number;
@@ -30,6 +32,7 @@ function CameraSurfaceImpl({
   pipSize,
   pipPosition,
   isFlipped,
+  saveFormat,
   frontBeautyEnabled,
   frontBeautySmooth,
   frontBeautyBrighten,
@@ -58,6 +61,7 @@ function CameraSurfaceImpl({
       pipPositionY={pipPosition.y}
       sxBackOnTop={isSplit ? !isFlipped : true}
       pipMainIsBack={isPip ? !isFlipped : true}
+      saveFormat={saveFormat}
       frontBeautyEnabled={frontBeautyEnabled}
       frontBeautySmooth={frontBeautySmooth}
       frontBeautyBrighten={frontBeautyBrighten}

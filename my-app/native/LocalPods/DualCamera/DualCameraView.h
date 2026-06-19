@@ -25,6 +25,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Save aspect ratio for dual-cam photo output: @"9:16" | @"3:4" | @"1:1"
 @property (nonatomic, copy) NSString *saveAspectRatio;
 
+// Save format: @"merged" saves WYSIWYG only; @"segments" saves combined/front/back when dual streams exist.
+@property (nonatomic, copy) NSString *saveFormat;
+
 // Flip state: controls camera allocation in preview and save
 // SX: YES=back on top, NO=front on top
 @property (nonatomic, assign) BOOL sxBackOnTop;

@@ -4,8 +4,11 @@ import * as MediaLibrary from 'expo-media-library';
 import type { CaptureMode } from '../constants';
 import { DualCameraModule, eventEmitter } from '../native';
 
+export type SaveFormat = 'merged' | 'segments';
+
 export interface UseDualCameraSessionOptions {
   ensureMedia: () => Promise<boolean>;
+  saveFormat?: SaveFormat;
 }
 
 export interface DualCameraSessionApi {
@@ -25,15 +28,22 @@ type NativeSaveEvent = {
   uris?: Partial<Record<'combined' | 'front' | 'back', string>>;
 };
 
-function collectSaveUris(event: NativeSaveEvent): string[] {
-  const ordered = [
-    event.uris?.combined,
-    event.uris?.front,
-    event.uris?.back,
-    event.uri,
-  ].filter((uri): uri is string => typeof uri === 'string' && uri.length > 0);
+function collectSaveUris(event: NativeSaveEvent, saveFormat: SaveFormat): string[] {
+  const ordered = saveFormat === 'segments'
+    ? [
+        event.uris?.combined,
+        event.uris?.front,
+        event.uris?.back,
+        event.uri,
+      ]
+    : [
+        event.uris?.combined,
+        event.uri,
+      ];
 
-  return Array.from(new Set(ordered));
+  const valid = ordered.filter((uri): uri is string => typeof uri === 'string' && uri.length > 0);
+
+  return Array.from(new Set(valid));
 }
 
 /**
@@ -41,7 +51,7 @@ function collectSaveUris(event: NativeSaveEvent): string[] {
  * subscriptions, and the resulting status flags. Uses a latest-ref for the
  * `ensureMedia` callback so events stay subscribed across permission changes.
  */
-export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOptions): DualCameraSessionApi {
+export function useDualCameraSession({ ensureMedia, saveFormat = 'merged' }: UseDualCameraSessionOptions): DualCameraSessionApi {
   const [saving, setSaving] = useState(false);
   const [recordingStarting, setRecordingStarting] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -50,6 +60,8 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
 
   const ensureMediaRef = useRef(ensureMedia);
   ensureMediaRef.current = ensureMedia;
+  const saveFormatRef = useRef<SaveFormat>(saveFormat);
+  saveFormatRef.current = saveFormat;
 
   useEffect(() => {
     if (!eventEmitter) return undefined;
@@ -59,7 +71,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       try {
         const ok = await ensureMediaRef.current();
         if (ok) {
-          const uris = collectSaveUris(event);
+          const uris = collectSaveUris(event, saveFormatRef.current);
           for (const uri of uris) {
             await MediaLibrary.saveToLibraryAsync(uri);
           }
@@ -88,7 +100,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       try {
         const ok = await ensureMediaRef.current();
         if (ok) {
-          const uris = collectSaveUris(event);
+          const uris = collectSaveUris(event, saveFormatRef.current);
           for (const uri of uris) {
             await MediaLibrary.saveToLibraryAsync(uri);
           }

@@ -17,6 +17,10 @@ RCT_CUSTOM_VIEW_PROPERTY(saveAspectRatio, NSString, DualCameraView) {
   view.saveAspectRatio = json ? [RCTConvert NSString:json] : @"9:16";
 }
 
+RCT_CUSTOM_VIEW_PROPERTY(saveFormat, NSString, DualCameraView) {
+  view.saveFormat = json ? [RCTConvert NSString:json] : @"merged";
+}
+
 RCT_CUSTOM_VIEW_PROPERTY(dualLayoutRatio, CGFloat, DualCameraView) {
   view.dualLayoutRatio = json ? [RCTConvert CGFloat:json] : 0.5;
 }

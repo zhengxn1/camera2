@@ -42,6 +42,7 @@
 // Event emission
 // ---------------------------------------------------------------------------
 - (void)emitRecordingFinished:(NSString *)uri;
+- (void)emitRecordingFinished:(NSString *)uri uris:(NSDictionary *)uris;
 - (void)emitRecordingStarted;
 - (void)emitRecordingError:(NSString *)error;
 - (void)emitRecordingError:(NSString *)error details:(NSDictionary *)details;

@@ -1,5 +1,5 @@
 import { memo, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { styles } from '../styles';
 import { clamp } from '../utils';
 
@@ -20,10 +20,16 @@ export const DEFAULT_BEAUTY_SETTINGS: BeautySettings = {
 const BEAUTY_VALUE_STEP = 2;
 
 const BEAUTY_ITEMS: Array<{ key: BeautyKey; label: string }> = [
-  { key: 'smooth', label: '磨皮' },
-  { key: 'brighten', label: '提亮' },
+  { key: 'smooth', label: '美颜' },
+  { key: 'brighten', label: '清晰' },
   { key: 'whiten', label: '美白' },
 ];
+
+const BEAUTY_ICONS: Record<BeautyKey, any> = {
+  smooth: require('../../assets/beauty/beauty-smooth.png'),
+  brighten: require('../../assets/beauty/beauty-clear.png'),
+  whiten: require('../../assets/beauty/beauty-whiten.png'),
+};
 
 interface BeautyPanelProps {
   visible: boolean;
@@ -161,12 +167,13 @@ interface BeautyItemIconProps {
 }
 
 function BeautyItemIcon({ type, selected }: BeautyItemIconProps) {
-  const glyph = type === 'smooth' ? '◌' : type === 'brighten' ? '✦' : '◐';
   return (
     <View style={[styles.beautyItemIcon, selected && styles.beautyItemIconSelected]}>
-      <Text style={[styles.beautyItemIconGlyph, selected && styles.beautyItemIconGlyphSelected]}>
-        {glyph}
-      </Text>
+      <Image
+        source={BEAUTY_ICONS[type]}
+        style={[styles.beautyItemIconImage, selected && styles.beautyItemIconImageSelected]}
+        resizeMode="contain"
+      />
     </View>
   );
 }
