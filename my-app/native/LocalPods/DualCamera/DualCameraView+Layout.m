@@ -252,6 +252,22 @@
   [fv addSubview:beautyPreview];
   self.frontBeautyPreviewImageView = beautyPreview;
 
+  if (self.metalDevice) {
+    MTKView *beautyMetalPreview = [[MTKView alloc] initWithFrame:fv.bounds device:self.metalDevice];
+    beautyMetalPreview.backgroundColor = [UIColor clearColor];
+    beautyMetalPreview.opaque = NO;
+    beautyMetalPreview.framebufferOnly = NO;
+    beautyMetalPreview.enableSetNeedsDisplay = YES;
+    beautyMetalPreview.paused = YES;
+    beautyMetalPreview.autoResizeDrawable = YES;
+    beautyMetalPreview.colorPixelFormat = MTLPixelFormatBGRA8Unorm;
+    beautyMetalPreview.contentMode = UIViewContentModeScaleAspectFill;
+    beautyMetalPreview.hidden = YES;
+    beautyMetalPreview.delegate = (id<MTKViewDelegate>)self;
+    [fv addSubview:beautyMetalPreview];
+    self.frontBeautyPreviewMetalView = beautyMetalPreview;
+  }
+
   [self setupPipGestures];
 
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -276,13 +292,23 @@
 }
 
 - (void)bringFrontBeautyPreviewToFront {
-  if (!self.frontBeautyPreviewImageView || !self.frontPreviewView) return;
-  self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
-  if (self.frontBeautyPreviewImageView.superview != self.frontPreviewView) {
-    [self.frontBeautyPreviewImageView removeFromSuperview];
-    [self.frontPreviewView addSubview:self.frontBeautyPreviewImageView];
+  if (!self.frontPreviewView) return;
+  if (self.frontBeautyPreviewImageView) {
+    self.frontBeautyPreviewImageView.frame = self.frontPreviewView.bounds;
+    if (self.frontBeautyPreviewImageView.superview != self.frontPreviewView) {
+      [self.frontBeautyPreviewImageView removeFromSuperview];
+      [self.frontPreviewView addSubview:self.frontBeautyPreviewImageView];
+    }
+    [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
   }
-  [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewImageView];
+  if (self.frontBeautyPreviewMetalView) {
+    self.frontBeautyPreviewMetalView.frame = self.frontPreviewView.bounds;
+    if (self.frontBeautyPreviewMetalView.superview != self.frontPreviewView) {
+      [self.frontBeautyPreviewMetalView removeFromSuperview];
+      [self.frontPreviewView addSubview:self.frontBeautyPreviewMetalView];
+    }
+    [self.frontPreviewView bringSubviewToFront:self.frontBeautyPreviewMetalView];
+  }
 }
 
 #pragma mark - Convenience helpers

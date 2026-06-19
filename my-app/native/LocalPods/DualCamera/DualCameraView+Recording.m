@@ -1,12 +1,8 @@
 #import "DualCameraView+Recording.h"
 #import "DualCameraView_Internal.h"
 
-static CGColorSpaceRef DualCameraCreateRealtimeVideoColorSpace(void) {
-  CGColorSpaceRef colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceITUR_709);
-  if (!colorSpace) {
-    colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  }
-  return colorSpace;
+static CGColorSpaceRef DualCameraCreateRealtimeRenderColorSpace(void) {
+  return CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 }
 
 static NSString *DualCameraRecordingFourCCString(OSType code) {
@@ -25,7 +21,7 @@ static id DualCameraRecordingBufferAttachment(CVBufferRef buffer, CFStringRef ke
   return (__bridge id)CVBufferGetAttachment(buffer, key, NULL);
 }
 
-static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
+static const CGFloat DualCameraHDRDebugOutputExposureEV = 0.0;
 
 @implementation DualCameraView (Recording)
 
@@ -33,15 +29,15 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
 
 - (NSNumber *)realtimeVideoBitRateForOutputSize:(CGSize)outputSize {
   CGFloat pixels = MAX(1.0, outputSize.width * outputSize.height);
-  CGFloat fullPortraitPixels = 1080.0 * 1920.0;
-  NSInteger bitRate = (NSInteger)llround(30000000.0 * (pixels / fullPortraitPixels));
-  bitRate = MAX(18000000, MIN(60000000, bitRate));
+  CGFloat fullPortraitPixels = 1440.0 * 2560.0;
+  NSInteger bitRate = (NSInteger)llround(45000000.0 * (pixels / fullPortraitPixels));
+  bitRate = MAX(24000000, MIN(55000000, bitRate));
   return @(bitRate);
 }
 
 - (NSDictionary *)realtimeVideoSettingsForOutputSize:(CGSize)outputSize {
   return @{
-    AVVideoCodecKey: AVVideoCodecTypeH264,
+    AVVideoCodecKey: AVVideoCodecTypeHEVC,
     AVVideoWidthKey: @(outputSize.width),
     AVVideoHeightKey: @(outputSize.height),
     AVVideoColorPropertiesKey: @{
@@ -52,8 +48,7 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
     AVVideoCompressionPropertiesKey: @{
       AVVideoAverageBitRateKey: [self realtimeVideoBitRateForOutputSize:outputSize],
       AVVideoExpectedSourceFrameRateKey: @(30),
-      AVVideoMaxKeyFrameIntervalKey: @(30),
-      AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
+      AVVideoMaxKeyFrameIntervalKey: @(30)
     }
   };
 }
@@ -81,6 +76,12 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
 
 - (CIImage *)realtimeOutputAdjustedImage:(CIImage *)image {
   if (!image || DualCameraHDRDebugOutputExposureEV == 0) return image;
+  static BOOL didLogOutputAdjustment = NO;
+  if (!didLogOutputAdjustment) {
+    didLogOutputAdjustment = YES;
+    NSLog(@"[BeautyRoute] source=recording output=combined postCompositeAdjustment=exposure beauty=not_applied ev=%.2f",
+          DualCameraHDRDebugOutputExposureEV);
+  }
 
   CIFilter *exposure = [CIFilter filterWithName:@"CIExposureAdjust"];
   [exposure setValue:image forKey:kCIInputImageKey];
@@ -110,9 +111,13 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
                                                              landscape:[self isDeviceOrientationLandscape:orientation]];
   CIImage *frontFrame = nil;
   CIImage *backFrame = nil;
+  NSInteger frontSeq = 0;
+  NSInteger backSeq = 0;
   @synchronized(self) {
     frontFrame = self.latestFrontFrame;
     backFrame = self.latestBackFrame;
+    frontSeq = self.latestFrontFrameSequence;
+    backSeq = self.latestBackFrameSequence;
   }
   @synchronized(self) {
     BOOL canReuseWarmup = [self canUseWarmedRealtimePipelineForAspectRatio:aspectRatio canvasSize:canvasSize outputSize:outputSize];
@@ -138,10 +143,13 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
     }
     CIImage *warmupImage = nil;
     if (frontFrame && backFrame) {
+      NSLog(@"[BeautyRoute] source=warmup output=combined frontCamera=front backCamera=back frontSeq=%ld backSeq=%ld",
+            (long)frontSeq,
+            (long)backSeq);
       warmupImage = [self compositedImageForLayoutState:warmupState
                                                   front:frontFrame
                                                    back:backFrame
-                                            highQuality:YES
+                                            highQuality:NO
                                                  source:@"warmup"];
     }
     if (!warmupImage) {
@@ -156,7 +164,7 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
                                                 (__bridge CFDictionaryRef)pixelAttrs,
                                                 &scratchBuffer);
     if (createStatus == kCVReturnSuccess && scratchBuffer) {
-      CGColorSpaceRef colorSpace = DualCameraCreateRealtimeVideoColorSpace();
+      CGColorSpaceRef colorSpace = DualCameraCreateRealtimeRenderColorSpace();
       [self.ciContext render:warmupImage
              toCVPixelBuffer:scratchBuffer
                       bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
@@ -188,7 +196,7 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
                                                   (__bridge CFDictionaryRef)pixelAttrs,
                                                   &warmupBuffer);
       if (bufferStatus == kCVReturnSuccess && warmupBuffer) {
-        CGColorSpaceRef colorSpace = DualCameraCreateRealtimeVideoColorSpace();
+        CGColorSpaceRef colorSpace = DualCameraCreateRealtimeRenderColorSpace();
         [self.ciContext render:warmupImage
                toCVPixelBuffer:warmupBuffer
                         bounds:CGRectMake(0, 0, outputSize.width, outputSize.height)
@@ -249,6 +257,12 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
   if (self.realtimeRecordingState != DualCameraRealtimeRecordingStateIdle || self.realtimeAssetWriter) {
     return NO;
   }
+
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self.frontBeautyPreviewRenderInFlight = NO;
+    self.frontBeautyPreviewImageView.hidden = YES;
+    self.frontBeautyPreviewImageView.image = nil;
+  });
 
   NSString *path = [self documentsPathWithPrefix:@"dual_realtime_"];
   NSURL *url = [NSURL fileURLWithPath:path];
@@ -369,6 +383,7 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
 }
 
 - (void)appendRealtimeVideoFrameAtTime:(CMTime)time source:(NSString *)source {
+  CFTimeInterval frameStart = CFAbsoluteTimeGetCurrent();
   if (!self.isDualRecordingActive || self.realtimeFinishRequested) return;
   if (self.realtimeRecordingState != DualCameraRealtimeRecordingStatePrepared &&
       self.realtimeRecordingState != DualCameraRealtimeRecordingStateWriting) {
@@ -391,9 +406,17 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
 
   CIImage *frontFrame = nil;
   CIImage *backFrame = nil;
+  CIImage *beautifiedFrontFrame = nil;
+  NSInteger frontSeq = 0;
+  NSInteger backSeq = 0;
+  NSInteger beautifiedFrontSeq = 0;
   @synchronized(self) {
     frontFrame = self.latestFrontFrame;
     backFrame = self.latestBackFrame;
+    beautifiedFrontFrame = self.latestFrontBeautifiedFrame;
+    frontSeq = self.latestFrontFrameSequence;
+    backSeq = self.latestBackFrameSequence;
+    beautifiedFrontSeq = self.latestFrontBeautifiedFrameSequence;
   }
 
   CGSize outputSize = CGSizeEqualToSize(self.realtimeOutputSize, CGSizeZero)
@@ -404,11 +427,25 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
   if (!state) {
     state = [self currentLayoutStateForCanvasSize:self.canvasSizeAtRecording outputSize:outputSize];
   }
+  BOOL useCachedBeauty = beautifiedFrontFrame != nil && beautifiedFrontSeq > 0;
+  CIImage *frontForComposition = useCachedBeauty ? beautifiedFrontFrame : frontFrame;
+  NSString *compositionSource = useCachedBeauty ? @"recording_cached_beauty" : @"recording";
+  static BOOL didLogRecordingRoute = NO;
+  if (!didLogRecordingRoute) {
+    didLogRecordingRoute = YES;
+    NSLog(@"[BeautyRoute] source=recording output=combined frontCamera=%@ backCamera=%@ frontSeq=%ld beautifiedFrontSeq=%ld backSeq=%ld usingCachedBeauty=%d postCompositeBeauty=never",
+          frontForComposition ? @"front" : @"none",
+          backFrame ? @"back" : @"none",
+          (long)frontSeq,
+          (long)beautifiedFrontSeq,
+          (long)backSeq,
+          useCachedBeauty);
+  }
   CIImage *composited = [self compositedImageForLayoutState:state
-                                                      front:frontFrame
+                                                      front:frontForComposition
                                                        back:backFrame
-                                                highQuality:YES
-                                                     source:@"recording"];
+                                                highQuality:NO
+                                                     source:compositionSource];
   if (!composited) {
     self.realtimeDroppedFrameCount += 1;
     return;
@@ -418,6 +455,11 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
   if (![self ensureRealtimeWriterStartedAtTime:time]) return;
   if (!self.realtimeVideoInput.isReadyForMoreMediaData) {
     self.realtimeDroppedFrameCount += 1;
+    if (self.realtimeDroppedFrameCount <= 5 || self.realtimeDroppedFrameCount % 30 == 0) {
+      NSLog(@"[DualCamera][VideoPerf] drop reason=writer_not_ready dropped=%ld written=%ld",
+            (long)self.realtimeDroppedFrameCount,
+            (long)self.realtimeWrittenVideoFrameCount);
+    }
     return;
   }
 
@@ -428,7 +470,7 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
     return;
   }
 
-  CGColorSpaceRef colorSpace = DualCameraCreateRealtimeVideoColorSpace();
+  CGColorSpaceRef colorSpace = DualCameraCreateRealtimeRenderColorSpace();
   if (colorSpace) {
     CVBufferSetAttachment(pixelBuffer, kCVImageBufferCGColorSpaceKey, colorSpace, kCVAttachmentMode_ShouldPropagate);
     CVBufferSetAttachment(pixelBuffer, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, kCVAttachmentMode_ShouldPropagate);
@@ -454,7 +496,7 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
           colorPrimaries ?: @"unknown",
           transferFunction ?: @"unknown",
           ycbcrMatrix ?: @"unknown");
-    NSLog(@"[DualCamera][QualityDiag] output pixelBuffer pixelFormat=%@ size=%zux%zu colorSpace=%@ primaries=%@ transfer=%@ matrix=%@",
+    NSLog(@"[DualCamera][QualityDiag] output pixelBuffer pixelFormat=%@ size=%zux%zu renderColorSpace=sRGB colorSpace=%@ primaries=%@ transfer=%@ matrix=%@",
           DualCameraRecordingFourCCString(outputPixelFormat),
           CVPixelBufferGetWidth(pixelBuffer),
           CVPixelBufferGetHeight(pixelBuffer),
@@ -488,6 +530,14 @@ static const CGFloat DualCameraHDRDebugOutputExposureEV = -0.12;
       dispatch_async(self.realtimeRenderQueue, ^{
         [self finishRealtimeRecording];
       });
+    }
+    CFTimeInterval frameMs = (CFAbsoluteTimeGetCurrent() - frameStart) * 1000.0;
+    if (frameMs > 33.0 || self.realtimeWrittenVideoFrameCount == 1 || self.realtimeWrittenVideoFrameCount % 60 == 0) {
+      NSLog(@"[DualCamera][VideoPerf] frameMs=%.2f written=%ld dropped=%ld source=%@",
+            frameMs,
+            (long)self.realtimeWrittenVideoFrameCount,
+            (long)self.realtimeDroppedFrameCount,
+            source ?: @"unknown");
     }
   }
   CVPixelBufferRelease(pixelBuffer);

@@ -150,8 +150,10 @@
 
   float blurAlpha = (float)(self.smooth / 100.0);
   float white = (float)MIN(1.0, (self.whiten / 100.0) * 1.35);
+  float sharpen = (float)MAX(0.08, 0.22 - blurAlpha * 0.08);
   _beautyFilter->SetBlurAlpha(blurAlpha);
   _beautyFilter->SetWhite(white);
+  _beautyFilter->SetSharpen(sharpen);
   _source->ProcessData((const uint8_t *)rgbaData.bytes, width, height, rowBytes, gpupixel::GPUPIXEL_FRAME_TYPE_RGBA);
 
   const uint8_t *outputBuffer = _sink->GetRgbaBuffer();
@@ -178,8 +180,8 @@
 
   if (!self.didLogAvailability) {
     self.didLogAvailability = YES;
-    NSLog(@"[DualCamera][GPUPixel] raw beauty pipeline active size=%dx%d blur=%.3f white=%.3f whiten=%.1f",
-          outputWidth, outputHeight, blurAlpha, white, self.whiten);
+    NSLog(@"[DualCamera][GPUPixel] raw beauty pipeline active size=%dx%d blur=%.3f white=%.3f whiten=%.1f sharpen=%.3f",
+          outputWidth, outputHeight, blurAlpha, white, self.whiten, sharpen);
   }
   return outputImage;
 #else

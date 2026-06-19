@@ -24,6 +24,9 @@
 - (CIImage *)circleAlphaMaskForRect:(CGRect)rect canvasSize:(CGSize)canvasSize;
 - (CIImage *)beautifiedFrontImage:(CIImage *)image;
 - (CIImage *)beautifiedFrontImage:(CIImage *)image source:(NSString *)source;
+- (CIImage *)beautifiedImage:(CIImage *)image
+                cameraSource:(NSString *)cameraSource
+                       usage:(NSString *)usage;
 
 /// Scale-to-fill + optional horizontal mirror, placed inside targetRect on a canvasSize canvas.
 - (CIImage *)preparedCameraImage:(CIImage *)image

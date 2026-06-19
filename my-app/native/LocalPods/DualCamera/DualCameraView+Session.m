@@ -12,7 +12,7 @@ static NSString *DualCameraFourCCString(OSType code) {
   return [NSString stringWithFormat:@"%s/%u", chars, (unsigned int)code];
 }
 
-static const BOOL DualCameraHDRDebugEnabled = YES;
+static const BOOL DualCameraHDRDebugEnabled = NO;
 
 @implementation DualCameraView (Session)
 

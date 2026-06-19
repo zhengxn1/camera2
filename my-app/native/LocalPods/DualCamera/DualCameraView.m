@@ -40,13 +40,21 @@
   _compositingQueue = dispatch_queue_create("com.zhengning.dualcamera.compositing", DISPATCH_QUEUE_SERIAL);
   _videoDataOutputQueue = dispatch_queue_create("com.zhengning.dualcamera.videodata", DISPATCH_QUEUE_SERIAL);
   _realtimeRenderQueue = dispatch_queue_create("com.zhengning.dualcamera.realtime-render", DISPATCH_QUEUE_SERIAL);
+  _frontBeautyProcessingQueue = dispatch_queue_create("com.zhengning.dualcamera.front-beauty", DISPATCH_QUEUE_SERIAL);
   CGColorSpaceRef srgb = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
-  _ciContext = [CIContext contextWithOptions:@{
+  _metalDevice = MTLCreateSystemDefaultDevice();
+  _metalCommandQueue = [_metalDevice newCommandQueue];
+  NSDictionary *ciOptions = @{
     kCIContextUseSoftwareRenderer: @NO,
     kCIContextWorkingColorSpace: (__bridge id)srgb,
     kCIContextOutputColorSpace: (__bridge id)srgb
-  }];
-  NSLog(@"[DualCamera][QualityDiag] CIContext workingColorSpace=sRGB outputColorSpace=sRGB softwareRenderer=NO");
+  };
+  _ciContext = _metalDevice
+    ? [CIContext contextWithMTLDevice:_metalDevice options:ciOptions]
+    : [CIContext contextWithOptions:ciOptions];
+  NSLog(@"[DualCamera][QualityDiag] CIContext workingColorSpace=sRGB outputColorSpace=sRGB softwareRenderer=NO metal=%d commandQueue=%d",
+        _metalDevice != nil,
+        _metalCommandQueue != nil);
   CGColorSpaceRelease(srgb);
   // Default values for layout/PiP/zoom properties (declared in .h for React Native)
   _dualLayoutRatio = 0.5;
@@ -74,6 +82,8 @@
   _frontBeautyWhiten = 0;
   _lastFrontBeautyPreviewUpdateTime = 0;
   _frontBeautyPreviewRenderInFlight = NO;
+  _latestFrontBeautyPreviewImageExtent = CGRectZero;
+  _latestFrontBeautifiedFramePTS = kCMTimeInvalid;
   _gpupixelBeautyAdapter = [[GPUPixelBeautyAdapter alloc] initWithCIContext:_ciContext];
   [self createPlaceholderViews];
   [self setupPipGestures];
@@ -92,6 +102,14 @@
 - (void)hideFrontBeautyPreviewIfInactive {
   if (self.frontBeautyEnabled && [self hasActiveFrontBeautyValues]) return;
   dispatch_async(dispatch_get_main_queue(), ^{
+    @synchronized(self) {
+      self.latestFrontBeautifiedFrame = nil;
+      self.latestFrontBeautifiedFrameSequence = 0;
+      self.latestFrontBeautifiedFramePTS = kCMTimeInvalid;
+    }
+    self.latestFrontBeautyPreviewImage = nil;
+    self.latestFrontBeautyPreviewImageExtent = CGRectZero;
+    self.frontBeautyPreviewMetalView.hidden = YES;
     self.frontBeautyPreviewImageView.hidden = YES;
     self.frontBeautyPreviewImageView.image = nil;
   });

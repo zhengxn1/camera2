@@ -20,6 +20,22 @@ export interface DualCameraSessionApi {
   handleShutterPress: (captureMode: CaptureMode) => void;
 }
 
+type NativeSaveEvent = {
+  uri?: string;
+  uris?: Partial<Record<'combined' | 'front' | 'back', string>>;
+};
+
+function collectSaveUris(event: NativeSaveEvent): string[] {
+  const ordered = [
+    event.uris?.combined,
+    event.uris?.front,
+    event.uris?.back,
+    event.uri,
+  ].filter((uri): uri is string => typeof uri === 'string' && uri.length > 0);
+
+  return Array.from(new Set(ordered));
+}
+
 /**
  * Owns the photo / recording lifecycle: capture commands, native event
  * subscriptions, and the resulting status flags. Uses a latest-ref for the
@@ -38,12 +54,15 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
   useEffect(() => {
     if (!eventEmitter) return undefined;
 
-    const subPhotoSaved = eventEmitter.addListener('onPhotoSaved', async (event: { uri: string }) => {
+    const subPhotoSaved = eventEmitter.addListener('onPhotoSaved', async (event: NativeSaveEvent) => {
       setSaving(false);
       try {
         const ok = await ensureMediaRef.current();
         if (ok) {
-          await MediaLibrary.saveToLibraryAsync(event.uri);
+          const uris = collectSaveUris(event);
+          for (const uri of uris) {
+            await MediaLibrary.saveToLibraryAsync(uri);
+          }
         }
       } catch (e: any) {
         Alert.alert('保存失败', e?.message ?? String(e));
@@ -61,7 +80,7 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       if (!stopRequestedRef.current) setRecordingStopping(false);
     });
 
-    const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event: { uri: string }) => {
+    const subRecordingFinished = eventEmitter.addListener('onRecordingFinished', async (event: NativeSaveEvent) => {
       stopRequestedRef.current = false;
       setRecordingStarting(false);
       setRecording(false);
@@ -69,7 +88,10 @@ export function useDualCameraSession({ ensureMedia }: UseDualCameraSessionOption
       try {
         const ok = await ensureMediaRef.current();
         if (ok) {
-          await MediaLibrary.saveToLibraryAsync(event.uri);
+          const uris = collectSaveUris(event);
+          for (const uri of uris) {
+            await MediaLibrary.saveToLibraryAsync(uri);
+          }
         }
       } catch (e: any) {
         Alert.alert('保存失败', e?.message ?? String(e));

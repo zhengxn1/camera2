@@ -65,6 +65,11 @@ function BeautyPanelImpl({
   return (
     <View style={styles.beautyOverlay} pointerEvents="box-none">
       <Pressable style={styles.beautyDismissArea} onPress={onClose} />
+      <BeautySlider
+        value={selectedValue}
+        disabled={controlsDisabled}
+        onChange={updateSelectedValue}
+      />
       <View style={styles.beautyPanel}>
         <View style={styles.beautyHeader}>
           <View style={styles.beautyHeaderSide} />
@@ -82,12 +87,6 @@ function BeautyPanelImpl({
 
         {!available ? <Text style={styles.beautyHint}>仅前置画面生效</Text> : null}
 
-        <BeautySlider
-          value={selectedValue}
-          disabled={controlsDisabled}
-          onChange={updateSelectedValue}
-        />
-
         <View style={styles.beautyItems}>
           {BEAUTY_ITEMS.map(item => {
             const selected = selectedKey === item.key;
@@ -104,7 +103,7 @@ function BeautyPanelImpl({
                 ]}
                 onPress={() => setSelectedKey(item.key)}
               >
-                <BeautyItemIcon selected={selected} />
+                <BeautyItemIcon type={item.key} selected={selected} />
                 <Text style={[styles.beautyItemLabel, selected && styles.beautyItemLabelSelected]}>
                   {item.label}
                 </Text>
@@ -156,13 +155,17 @@ function BeautySlider({ value, disabled, onChange }: BeautySliderProps) {
 }
 
 interface BeautyItemIconProps {
+  type: BeautyKey;
   selected: boolean;
 }
 
-function BeautyItemIcon({ selected }: BeautyItemIconProps) {
+function BeautyItemIcon({ type, selected }: BeautyItemIconProps) {
+  const glyph = type === 'smooth' ? '◌' : type === 'brighten' ? '✦' : '◐';
   return (
     <View style={[styles.beautyItemIcon, selected && styles.beautyItemIconSelected]}>
-      <View style={[styles.beautyItemIconDot, selected && styles.beautyItemIconDotSelected]} />
+      <Text style={[styles.beautyItemIconGlyph, selected && styles.beautyItemIconGlyphSelected]}>
+        {glyph}
+      </Text>
     </View>
   );
 }

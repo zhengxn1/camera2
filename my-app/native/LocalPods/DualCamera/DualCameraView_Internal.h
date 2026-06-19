@@ -13,6 +13,8 @@
 #import <AVFoundation/AVFoundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 #import <ImageIO/ImageIO.h>
+#import <Metal/Metal.h>
+#import <MetalKit/MetalKit.h>
 #import <math.h>
 
 // ---------------------------------------------------------------------------
@@ -78,6 +80,7 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) UIView *frontPreviewView;
 @property (nonatomic, strong) UIView *backPreviewView;
 @property (nonatomic, strong) UIImageView *frontBeautyPreviewImageView;
+@property (nonatomic, strong) MTKView *frontBeautyPreviewMetalView;
 @property (nonatomic, strong) dispatch_queue_t sessionQueue;
 @property (nonatomic, assign) AVCaptureDevicePosition singleCameraPosition;
 @property (nonatomic, assign) BOOL usingMultiCam;
@@ -91,17 +94,38 @@ typedef NS_ENUM(NSInteger, DualCameraRealtimeRecordingState) {
 @property (nonatomic, strong) AVCaptureAudioDataOutput *audioDataOutput;
 @property (nonatomic, strong) dispatch_queue_t videoDataOutputQueue;
 @property (nonatomic, strong) dispatch_queue_t realtimeRenderQueue;
+@property (nonatomic, strong) dispatch_queue_t frontBeautyProcessingQueue;
 @property (nonatomic, strong) CIImage *latestFrontFrame;
 @property (nonatomic, strong) CIImage *latestBackFrame;
+@property (nonatomic, assign) NSInteger latestFrontFrameSequence;
+@property (nonatomic, assign) NSInteger latestBackFrameSequence;
+@property (nonatomic, assign) CMTime latestFrontFramePTS;
+@property (nonatomic, assign) CMTime latestBackFramePTS;
 @property (nonatomic, strong) CIContext *ciContext;
+@property (nonatomic, strong) id<MTLDevice> metalDevice;
+@property (nonatomic, strong) id<MTLCommandQueue> metalCommandQueue;
 @property (nonatomic, strong) GPUPixelBeautyAdapter *gpupixelBeautyAdapter;
 @property (nonatomic, assign) CFTimeInterval lastFrontBeautyPreviewUpdateTime;
 @property (nonatomic, assign) BOOL frontBeautyPreviewRenderInFlight;
+@property (nonatomic, strong) CIImage *latestFrontBeautyPreviewImage;
+@property (nonatomic, assign) CGRect latestFrontBeautyPreviewImageExtent;
+@property (nonatomic, strong) CIImage *latestFrontBeautifiedFrame;
+@property (nonatomic, assign) NSInteger latestFrontBeautifiedFrameSequence;
+@property (nonatomic, assign) CMTime latestFrontBeautifiedFramePTS;
 
 // Dual compositing state
 @property (nonatomic, strong) NSMutableDictionary *pendingDualPhotos;
 @property (nonatomic, assign) BOOL pendingDualPhotosFront;
 @property (nonatomic, assign) BOOL pendingDualPhotosBack;
+@property (nonatomic, assign) BOOL highQualityDualPhotoCaptureInProgress;
+@property (nonatomic, assign) NSInteger highQualityDualPhotoCaptureID;
+@property (nonatomic, strong) NSData *pendingHighQualityFrontPhotoData;
+@property (nonatomic, strong) NSData *pendingHighQualityBackPhotoData;
+@property (nonatomic, assign) BOOL pendingHighQualityFrontPhotoFinished;
+@property (nonatomic, assign) BOOL pendingHighQualityBackPhotoFinished;
+@property (nonatomic, strong) DualCameraLayoutState *pendingHighQualityDualPhotoState;
+@property (nonatomic, copy) NSString *pendingHighQualityDualPhotoLayout;
+@property (nonatomic, assign) CGSize pendingHighQualityDualPhotoCanvasSize;
 @property (nonatomic, assign) BOOL isDualRecordingActive;
 @property (nonatomic, strong) AVAssetExportSession *videoExportSession;
 @property (nonatomic, strong) dispatch_queue_t compositingQueue;
