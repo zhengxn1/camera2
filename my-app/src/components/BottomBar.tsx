@@ -25,6 +25,9 @@ interface BottomBarProps {
   beautyPanelVisible: boolean;
   beautyAvailable: boolean;
   onBeautyOpen: () => void;
+  settingsActive: boolean;
+  settingsDisabled: boolean;
+  onSettingsOpen: () => void;
 }
 
 function BottomBarImpl({
@@ -44,6 +47,9 @@ function BottomBarImpl({
   beautyPanelVisible,
   beautyAvailable,
   onBeautyOpen,
+  settingsActive,
+  settingsDisabled,
+  onSettingsOpen,
 }: BottomBarProps) {
   const disabled = recording || recordingStarting || recordingStopping;
   const videoReady = captureMode === 'video' && !videoLocked;
@@ -57,7 +63,7 @@ function BottomBarImpl({
             selected={cameraMode === item.mode}
             disabled={disabled}
             onPress={() => onModeSwitch(item.mode)}
-            label={item.label}
+            label={labelForModeIcon(item.icon)}
             icon={item.icon}
           />
         ))}
@@ -73,6 +79,28 @@ function BottomBarImpl({
           onPress={onBeautyOpen}
         >
           <BeautyIcon selected={beautyActive || beautyPanelVisible} />
+          <Text style={[
+            styles.modeButtonLabel,
+            (beautyActive || beautyPanelVisible) && styles.modeButtonLabelSelected,
+          ]}>
+            美颜
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="打开设置"
+          disabled={settingsDisabled}
+          style={[
+            styles.modeButton,
+            settingsActive && styles.modeButtonSelected,
+            settingsDisabled && styles.disabledControl,
+          ]}
+          onPress={onSettingsOpen}
+        >
+          <SettingsIcon selected={settingsActive} />
+          <Text style={[styles.modeButtonLabel, settingsActive && styles.modeButtonLabelSelected]}>
+            设置
+          </Text>
         </Pressable>
       </View>
 
@@ -151,12 +179,23 @@ function ModeButtonImpl({ selected, disabled, onPress, label, icon }: ModeButton
       onPress={onPress}
     >
       <ModeIcon name={icon} selected={selected} />
+      <Text style={[styles.modeButtonLabel, selected && styles.modeButtonLabelSelected]}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
 const ModeButton = memo(ModeButtonImpl);
 ModeButton.displayName = 'ModeButton';
+
+function labelForModeIcon(icon: ModeIconName): string {
+  if (icon === 'pipSquare') return '画中画方形';
+  if (icon === 'pipCircle') return '画中画圆形';
+  if (icon === 'lr') return '左右布局';
+  if (icon === 'sx') return '上下布局';
+  return '相机';
+}
 
 interface FlipIconProps {
   active: boolean;
@@ -203,6 +242,32 @@ function BeautyIconImpl({ selected }: BeautyIconProps) {
 
 const BeautyIcon = memo(BeautyIconImpl);
 BeautyIcon.displayName = 'BeautyIcon';
+
+interface SettingsIconProps {
+  selected: boolean;
+}
+
+function SettingsIconImpl({ selected }: SettingsIconProps) {
+  const tone = selected ? styles.modeIconSelected : styles.modeIcon;
+  const fill = selected ? styles.modeIconFillSelected : styles.modeIconFill;
+
+  return (
+    <View style={styles.settingsRailIcon}>
+      <View style={[styles.settingsRailSlider, tone]}>
+        <View style={[styles.settingsRailKnobLeft, fill]} />
+      </View>
+      <View style={[styles.settingsRailSlider, tone]}>
+        <View style={[styles.settingsRailKnobRight, fill]} />
+      </View>
+      <View style={[styles.settingsRailSlider, tone]}>
+        <View style={[styles.settingsRailKnobCenter, fill]} />
+      </View>
+    </View>
+  );
+}
+
+const SettingsIcon = memo(SettingsIconImpl);
+SettingsIcon.displayName = 'SettingsIcon';
 
 interface ModeIconProps {
   name: ModeIconName;

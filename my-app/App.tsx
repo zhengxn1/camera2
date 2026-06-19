@@ -200,11 +200,13 @@ export default function App() {
         beautyPanelVisible={beautyPanelVisible}
         beautyAvailable={beautyAvailable}
         onBeautyOpen={openBeautyPanel}
+        settingsActive={menuExpanded}
+        settingsDisabled={session.interactionDisabled || session.saving || videoUnlock.purchasing}
+        onSettingsOpen={openMenu}
       />
 
       <SettingsPopup
         visible={menuExpanded}
-        onOpen={openMenu}
         onClose={closeMenu}
         aspectRatio={aspect}
         onAspectChange={setAspect}

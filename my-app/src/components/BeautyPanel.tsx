@@ -51,7 +51,7 @@ function BeautyPanelImpl({
   onChange,
   onClose,
 }: BeautyPanelProps) {
-  const [selectedKey, setSelectedKey] = useState<BeautyKey>('smooth');
+  const [selectedKey, setSelectedKey] = useState<BeautyKey>('whiten');
   const selectedValue = valueForKey(settings, selectedKey);
   const controlsDisabled = disabled || !available;
 
@@ -65,11 +65,6 @@ function BeautyPanelImpl({
   return (
     <View style={styles.beautyOverlay} pointerEvents="box-none">
       <Pressable style={styles.beautyDismissArea} onPress={onClose} />
-      <BeautySlider
-        value={selectedValue}
-        disabled={controlsDisabled}
-        onChange={updateSelectedValue}
-      />
       <View style={styles.beautyPanel}>
         <View style={styles.beautyHeader}>
           <View style={styles.beautyHeaderSide} />
@@ -86,6 +81,12 @@ function BeautyPanelImpl({
         </View>
 
         {!available ? <Text style={styles.beautyHint}>仅前置画面生效</Text> : null}
+
+        <BeautySlider
+          value={selectedValue}
+          disabled={controlsDisabled}
+          onChange={updateSelectedValue}
+        />
 
         <View style={styles.beautyItems}>
           {BEAUTY_ITEMS.map(item => {
